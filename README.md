@@ -1,8 +1,13 @@
-# @rvboris/opencode-mempalace
+# OpenCode MemPalace Plugin
+
+> Persistent memory for OpenCode with hidden retrieval, autosave, and a safe MemPalace wrapper tool.
 
 [Русская версия](./README.ru.md)
 
-OpenCode plugin for hidden MemPalace retrieval and autosave through a local Python adapter.
+OpenCode plugin for hidden retrieval and autosave with [MemPalace](https://github.com/milla-jovovich/mempalace) through a local Python adapter.
+
+- OpenCode: https://opencode.ai
+- MemPalace: https://github.com/milla-jovovich/mempalace
 
 ## What it does
 

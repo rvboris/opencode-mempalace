@@ -1,8 +1,13 @@
-# @rvboris/opencode-mempalace
+# Плагин MemPalace для OpenCode
+
+> Постоянная память для OpenCode: скрытый retrieval, autosave и безопасный wrapper tool для MemPalace.
 
 [English version](./README.md)
 
-Плагин OpenCode для скрытого retrieval и autosave в MemPalace через локальный Python adapter.
+Плагин для [OpenCode](https://opencode.ai) со скрытым retrieval и autosave в [MemPalace](https://github.com/milla-jovovich/mempalace) через локальный Python adapter.
+
+- OpenCode: https://opencode.ai
+- MemPalace: https://github.com/milla-jovovich/mempalace
 
 ## Что делает
 
