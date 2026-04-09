@@ -1,0 +1,7 @@
+tests/
+plugin/
+bridge/
+scripts/
+bun.lock
+tsconfig.json
+.gitignore
