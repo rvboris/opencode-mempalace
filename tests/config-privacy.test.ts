@@ -11,6 +11,7 @@ describe("config and privacy", () => {
     expect(config.autosaveEnabled).toBe(true)
     expect(config.retrievalEnabled).toBe(true)
     expect(config.keywordSaveEnabled).toBe(true)
+    expect(config.autoMineExtractMode).toBe("general")
     expect(config.maxInjectedItems).toBeGreaterThan(0)
     expect(config.retrievalQueryLimit).toBeGreaterThan(0)
   })

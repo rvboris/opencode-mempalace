@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import type { AppLoggerClient } from "./types"
 
 type LogLevel = "INFO" | "WARN" | "ERROR"
 
@@ -32,7 +33,7 @@ const toAppLevel = (level: LogLevel) => {
   return "info"
 }
 
-export const setLogger = (client: { app?: { log?: (input: { body: any }) => Promise<unknown> } }) => {
+export const setLogger = (client: AppLoggerClient) => {
   logger = async (level, message, details) => {
     await writeFileLog(level, message, details)
     try {

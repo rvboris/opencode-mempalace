@@ -1,10 +1,22 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, mock } from "bun:test"
+
+const adapterCalls: any[] = []
+mock.module("../plugin/lib/adapter", () => ({
+  executeAdapter: async (_shell: any, payload: any) => {
+    adapterCalls.push(payload)
+    return { success: true }
+  },
+}))
 
 const { eventHooks } = await import("../plugin/hooks/event")
-const { AutosaveStatus, buildTranscriptDigest, buildUserDigest, getSessionState } = await import("../plugin/lib/autosave")
+const { AutosaveStatus, getSessionState, resetAllStates } = await import("../plugin/lib/autosave")
+const { resetConfig } = await import("../plugin/lib/config")
 
 describe("eventHooks", () => {
-  it("marks autosave pending on idle when session progressed", async () => {
+  it("mines session on idle when session progressed", async () => {
+    resetConfig()
+    resetAllStates()
+    adapterCalls.length = 0
     const hooks = eventHooks({
       client: {
         session: {
@@ -16,33 +28,28 @@ describe("eventHooks", () => {
           }),
         },
       },
-      project: {},
+      project: { name: "Demo" },
       directory: "",
       worktree: "",
-      $: {},
+      $: async () => {},
     })
 
     await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-1" } } })
-    expect(getSessionState("event-1").status).toBe(AutosaveStatus.Pending)
+    expect(adapterCalls[0].mode).toBe("mine_messages")
+    expect(getSessionState("event-1").status).toBe(AutosaveStatus.Saved)
   })
 
-  it("finalizes running autosave on idle", async () => {
-    const messages = [{ role: "user", content: "Remember project decision." }]
-    const state = getSessionState("event-2")
-    state.status = AutosaveStatus.Running
-    state.pendingUserDigest = buildUserDigest(messages)
-    state.pendingTranscriptDigest = buildTranscriptDigest(messages)
-    state.successfulToolCalls = ["mempalace_add_drawer"]
-
+  it("marks retrieval pending on normal message updates", async () => {
+    resetConfig()
+    resetAllStates()
     const hooks = eventHooks({
-      client: { session: { messages: async () => ({ data: messages }) } },
+      client: { session: { messages: async () => ({ data: [{ role: "user", content: "How do we build?" }] }) } },
       project: {},
       directory: "",
       worktree: "",
-      $: {},
+      $: async () => {},
     })
-
-    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-2" } } })
-    expect(getSessionState("event-2").status).toBe(AutosaveStatus.Saved)
+    await hooks.event?.({ event: { type: "message.updated", properties: { sessionID: "event-2" } } })
+    expect(getSessionState("event-2").retrievalPending).toBe(true)
   })
 })

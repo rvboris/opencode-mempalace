@@ -25,11 +25,11 @@ flowchart TD
     U[Сообщение пользователя] --> OC[Ход OpenCode]
     OC --> EV[Хуки плагина]
     EV --> RET[Скрытая retrieval-инструкция]
-    EV --> AS[Autosave pending на idle/compaction]
+    EV --> MINE[Прямой auto-mine на idle или delete]
     RET --> LLM[Модель]
-    AS --> LLM
     LLM --> TOOL[mempalace_memory]
     TOOL --> ADAPTER[Python adapter]
+    MINE --> ADAPTER
     ADAPTER --> MP[MemPalace backend]
     MP --> ADAPTER
     ADAPTER --> TOOL
@@ -121,7 +121,7 @@ npm run build
 
 ### Autosave
 
-На `session.idle` и `session.compacted` плагин ставит autosave в состояние `pending`. Реальная запись делается на следующем ходе модели через `mempalace_memory`.
+На `session.idle`, `session.compacted` и `session.deleted` плагин может напрямую майнить контекст сессии через Python adapter. Структурированные ручные сохранения по-прежнему идут через `mempalace_memory`.
 
 ### Безопасный wrapper tool
 
@@ -227,4 +227,5 @@ opencode --log-level DEBUG
 - никаких видимых autosave-сообщений в чате
 - никаких OpenCode tool-to-tool вызовов
 - adapter использует stdin/stdout streaming
+- autosave выполняется самим plugin; ручные действия памяти идут через `mempalace_memory`
 - пакет подготовлен как полноценный publishable OpenCode plugin

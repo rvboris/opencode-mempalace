@@ -37,7 +37,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "prepublishOnly": "npm run build",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "publishConfig": {
     "access": "public"

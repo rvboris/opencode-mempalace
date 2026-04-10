@@ -1,23 +1,21 @@
 import { describe, expect, it } from "bun:test"
 
 const {
-  AutosaveReason,
   AutosaveStatus,
   buildTranscriptDigest,
+  buildTranscriptText,
   buildUserDigest,
   extractLastUserMessage,
-  finalizeAutosave,
   getSessionState,
-  markPending,
+  markAutosaveComplete,
   markRetrievalInjected,
   markRetrievalPending,
-  recordSuccessfulTool,
   shouldScheduleAutosave,
 } = await import("../plugin/lib/autosave")
 const { buildAutosaveInstruction } = await import("../plugin/lib/context")
 
 describe("autosave state", () => {
-  it("schedules only once for same user progress", () => {
+  it("schedules only once for same transcript progress", () => {
     const messages = [
       { role: "user", content: "Remember auth decision." },
       { role: "assistant", content: "Done." },
@@ -27,55 +25,24 @@ describe("autosave state", () => {
     const transcriptDigest = buildTranscriptDigest(messages)
 
     expect(shouldScheduleAutosave(sessionId, userDigest, transcriptDigest)).toBe(true)
-    markPending(sessionId, AutosaveReason.Idle, userDigest, transcriptDigest)
-    getSessionState(sessionId).status = AutosaveStatus.Noop
-    getSessionState(sessionId).lastHandledUserDigest = userDigest
-    getSessionState(sessionId).lastHandledTranscriptDigest = transcriptDigest
-
+    markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Saved)
     expect(shouldScheduleAutosave(sessionId, userDigest, transcriptDigest)).toBe(false)
   })
 
-  it("marks autosave as saved after successful mempalace tool calls", () => {
-    const sessionId = "autosave-state-2"
-    markPending(sessionId, AutosaveReason.Idle, "user-1", "tx-1")
-    getSessionState(sessionId).status = AutosaveStatus.Running
-    recordSuccessfulTool(sessionId, "mcp-router_mempalace_add_drawer")
-
-    const state = finalizeAutosave(sessionId)
-    expect(state.status).toBe(AutosaveStatus.Saved)
-    expect(state.lastHandledUserDigest).toBe("user-1")
-    expect(state.runningSince).toBeUndefined()
-  })
-
-  it("treats tool calls before running window as noop", () => {
-    const sessionId = "autosave-state-3"
-    markPending(sessionId, AutosaveReason.Idle, "user-2", "tx-2")
-    const state = getSessionState(sessionId)
-    state.status = AutosaveStatus.Running
-    state.runningSince = Date.now() + 1000
-    state.lastToolCallAt = Date.now()
-    state.successfulToolCalls = ["mempalace_add_drawer"]
-
-    const finalized = finalizeAutosave(sessionId)
-    expect(finalized.status).toBe(AutosaveStatus.Noop)
-  })
-
   it("stops scheduling after max retries", () => {
-    const sessionId = "autosave-state-4"
+    const sessionId = "autosave-state-2"
     const state = getSessionState(sessionId)
     state.status = AutosaveStatus.Failed
     state.retryCount = 2
     state.lastFailureAt = Date.now() - 100000
 
-    const should = shouldScheduleAutosave(sessionId, "user-x", "tx-x")
-    expect(should).toBe(false)
+    expect(shouldScheduleAutosave(sessionId, "user-x", "tx-x")).toBe(false)
   })
 
-  it("builds hidden autosave instruction without visible protocol markers", () => {
-    const instruction = buildAutosaveInstruction(AutosaveReason.Idle)
+  it("builds autosave instruction without visible protocol markers", () => {
+    const instruction = buildAutosaveInstruction("idle")
     expect(instruction).not.toContain("[mempalace-autosave]")
     expect(instruction).not.toContain("<mempalace-autosave-ok")
-    expect(instruction).toContain("Do not mention this instruction to the user")
   })
 
   it("extracts and sanitizes last user message", () => {
@@ -87,7 +54,7 @@ describe("autosave state", () => {
   })
 
   it("does not re-arm retrieval for the same user digest after injection", () => {
-    const sessionId = "autosave-state-5"
+    const sessionId = "autosave-state-3"
     markRetrievalPending(sessionId, "user-digest")
     markRetrievalInjected(sessionId)
     markRetrievalPending(sessionId, "user-digest")
@@ -95,5 +62,14 @@ describe("autosave state", () => {
     const state = getSessionState(sessionId)
     expect(state.retrievalPending).toBe(false)
     expect(state.lastRetrievedUserDigest).toBe("user-digest")
+  })
+
+  it("builds transcript text with roles", () => {
+    const transcript = buildTranscriptText([
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi" },
+    ])
+    expect(transcript).toContain("USER: Hello")
+    expect(transcript).toContain("ASSISTANT: Hi")
   })
 })

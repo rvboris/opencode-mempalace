@@ -1,22 +1,22 @@
 import {
-  AutosaveStatus,
   clearKeywordSavePending,
   extractLastUserMessage,
   getCurrentTurnSessionId,
   getSessionState,
   markRetrievalInjected,
-  startAutosave,
 } from "../lib/autosave"
 import { loadConfig } from "../lib/config"
-import { buildAutosaveInstruction, buildKeywordSaveInstruction, buildRetrievalInstruction } from "../lib/context"
+import { buildKeywordSaveInstruction, buildRetrievalInstruction } from "../lib/context"
 import { writeLog } from "../lib/log"
+import type { SystemHookContext } from "../lib/types"
 
-type PluginContext = {
-  client: any
-  project: any
+const getProjectName = (project: unknown) => {
+  return typeof project === "object" && project !== null && "name" in project && typeof project.name === "string"
+    ? project.name
+    : undefined
 }
 
-export const systemHooks = (ctx: PluginContext) => {
+export const systemHooks = (ctx: SystemHookContext) => {
   return {
     "experimental.chat.system.transform": async (
       _input: {},
@@ -28,13 +28,17 @@ export const systemHooks = (ctx: PluginContext) => {
         const config = await loadConfig()
         const state = getSessionState(sessionId)
         const response = await ctx.client.session.messages({ path: { id: sessionId } })
-        const messages = response?.data ?? response ?? []
+        const messages = Array.isArray(response)
+          ? response
+          : response && "data" in response && Array.isArray(response.data)
+            ? response.data
+            : []
         const lastUserMessage = extractLastUserMessage(messages)
 
         if (config.retrievalEnabled && state.retrievalPending && lastUserMessage) {
           output.system.push(
             buildRetrievalInstruction({
-              projectName: ctx.project?.name,
+              projectName: getProjectName(ctx.project),
               projectWingPrefix: config.projectWingPrefix,
               userWingPrefix: config.userWingPrefix,
               maxInjectedItems: config.maxInjectedItems,
@@ -52,14 +56,6 @@ export const systemHooks = (ctx: PluginContext) => {
           clearKeywordSavePending(sessionId)
           await writeLog("INFO", "injected keyword save instruction", { sessionId })
         }
-
-        if (state.status !== AutosaveStatus.Pending || !state.pendingReason) return
-        output.system.push(buildAutosaveInstruction(state.pendingReason))
-        startAutosave(sessionId)
-        await writeLog("INFO", "injected hidden autosave instruction", {
-          sessionId,
-          reason: state.pendingReason,
-        })
       } catch (error) {
         await writeLog("ERROR", "system transform hook failed", {
           error: error instanceof Error ? error.message : String(error),

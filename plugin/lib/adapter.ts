@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import type { AdapterRequest, AdapterResponse } from "./types"
 
 const getAdapterPath = () => {
   const here = path.dirname(fileURLToPath(import.meta.url))
@@ -9,11 +10,15 @@ const getAdapterPath = () => {
 
 const getPythonCommand = () => process.env.MEMPALACE_ADAPTER_PYTHON || "python"
 
+const isAdapterResponse = (value: unknown): value is AdapterResponse => {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
 export const executeAdapter = async (
-  _shell: any,
-  payload: Record<string, unknown>,
+  _shell: unknown,
+  payload: AdapterRequest,
   retries = 3,
-) => {
+): Promise<AdapterResponse> => {
   let lastError: unknown
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -40,7 +45,11 @@ export const executeAdapter = async (
         child.stdin.end()
       })
 
-      return JSON.parse(text)
+      const parsed: unknown = JSON.parse(text)
+      if (!isAdapterResponse(parsed)) {
+        throw new Error("Adapter returned an invalid JSON payload")
+      }
+      return parsed
     } catch (error) {
       lastError = error
       if (attempt === retries) throw error

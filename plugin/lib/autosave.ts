@@ -1,6 +1,8 @@
 import crypto from "node:crypto"
 import { sanitizeText } from "./derive"
 import { stripPrivateContent } from "./privacy"
+import { MAX_USER_MESSAGES_DIGEST, MAX_TRANSCRIPT_MESSAGES_DIGEST } from "./constants"
+import type { MessageLike } from "./types"
 
 export enum AutosaveReason {
   Idle = "idle",
@@ -9,8 +11,6 @@ export enum AutosaveReason {
 }
 export enum AutosaveStatus {
   Idle = "idle",
-  Pending = "pending",
-  Running = "running",
   Saved = "saved",
   Noop = "noop",
   Failed = "failed",
@@ -18,19 +18,11 @@ export enum AutosaveStatus {
 
 export type SessionAutosaveState = {
   status: AutosaveStatus
-  pendingReason?: AutosaveReason
   retrievalPending: boolean
   pendingRetrievalUserDigest?: string
   keywordSavePending: boolean
-  pendingUserDigest?: string
-  pendingTranscriptDigest?: string
   lastHandledUserDigest?: string
   lastHandledTranscriptDigest?: string
-  successfulToolCalls: string[]
-  successfulToolCallIds: string[]
-  mutationToolCallIds: string[]
-  runningSince?: number
-  lastToolCallAt?: number
   lastRetrievedUserDigest?: string
   retryCount: number
   lastFailureAt?: number
@@ -44,39 +36,36 @@ const STATE_TTL_MS = 1000 * 60 * 60 * 12
 const RETRY_COOLDOWN_MS = 1000 * 30
 const MAX_RETRIES = 2
 
-const extractTextParts = (message: any) => {
+const extractTextParts = (message: MessageLike | null | undefined) => {
   const parts: string[] = []
   if (!message) return parts
   if (typeof message.content === "string") parts.push(message.content)
-  if (Array.isArray(message.parts)) {
-    for (const part of message.parts) {
-      if (!part) continue
-      if (typeof part.text === "string") parts.push(part.text)
-      if (typeof part.content === "string") parts.push(part.content)
-    }
+  for (const part of message.parts ?? []) {
+    if ("text" in part && typeof part.text === "string") parts.push(part.text)
+    if ("content" in part && typeof part.content === "string") parts.push(part.content)
   }
-  if (message.info && typeof message.info?.content === "string") {
+  if (message.info && "content" in message.info && typeof message.info.content === "string") {
     parts.push(message.info.content)
   }
   return parts
 }
 
-const extractRole = (message: any) => message?.role || message?.info?.role || "unknown"
+const extractRole = (message: MessageLike | null | undefined) => message?.role ?? message?.info?.role ?? "unknown"
 
 const fingerprint = (chunks: string[]) => {
   return crypto.createHash("sha256").update(JSON.stringify(chunks), "utf8").digest("hex").slice(0, 16)
 }
 
-export const buildUserDigest = (messages: any[]) => {
-  const normalized = (messages || [])
+export const buildUserDigest = (messages: readonly MessageLike[] | null | undefined) => {
+  const normalized = (messages ?? [])
     .filter((message) => extractRole(message) === "user")
-    .slice(-20)
+    .slice(-MAX_USER_MESSAGES_DIGEST)
     .map((message) => extractTextParts(message).map((part) => sanitizeText(part)).join("\n"))
   return fingerprint(normalized)
 }
 
-export const buildTranscriptDigest = (messages: any[]) => {
-  const normalized = (messages || []).slice(-50).map((message) => {
+export const buildTranscriptDigest = (messages: readonly MessageLike[] | null | undefined) => {
+  const normalized = (messages ?? []).slice(-MAX_TRANSCRIPT_MESSAGES_DIGEST).map((message) => {
     const role = extractRole(message)
     const text = extractTextParts(message).map((part) => sanitizeText(part)).join("\n")
     return `${role}:${text}`
@@ -86,9 +75,6 @@ export const buildTranscriptDigest = (messages: any[]) => {
 
 const createState = (): SessionAutosaveState => ({
   status: AutosaveStatus.Idle,
-  successfulToolCalls: [],
-  successfulToolCallIds: [],
-  mutationToolCallIds: [],
   retryCount: 0,
   retrievalPending: true,
   keywordSavePending: false,
@@ -134,21 +120,21 @@ export const resetAllStates = () => {
   currentTurnSessionId = undefined
 }
 
-export const markPending = (
+export const markAutosaveComplete = (
   sessionId: string,
-  reason: AutosaveReason,
   userDigest: string,
   transcriptDigest: string,
+  status: AutosaveStatus.Saved | AutosaveStatus.Noop,
 ) => {
   const state = getSessionState(sessionId)
-  state.status = AutosaveStatus.Pending
-  state.pendingReason = reason
-  state.pendingUserDigest = userDigest
-  state.pendingTranscriptDigest = transcriptDigest
-  state.successfulToolCalls = []
-  state.successfulToolCallIds = []
-  state.mutationToolCallIds = []
+  state.status = status
+  state.lastHandledUserDigest = userDigest
+  state.lastHandledTranscriptDigest = transcriptDigest
+  if (status === AutosaveStatus.Saved) {
+    state.retryCount = 0
+  }
   state.updatedAt = Date.now()
+  return state
 }
 
 export const markRetrievalInjected = (sessionId: string) => {
@@ -180,69 +166,11 @@ export const clearKeywordSavePending = (sessionId: string) => {
   state.updatedAt = Date.now()
 }
 
-export const extractLastUserMessage = (messages: any[]) => {
-  const userMessages = (messages || []).filter((message) => extractRole(message) === "user")
+export const extractLastUserMessage = (messages: readonly MessageLike[] | null | undefined) => {
+  const userMessages = (messages ?? []).filter((message) => extractRole(message) === "user")
   const last = userMessages.at(-1)
   const text = extractTextParts(last).map((part) => stripPrivateContent(part)).join("\n").trim()
   return text
-}
-
-export const startAutosave = (sessionId: string) => {
-  const state = getSessionState(sessionId)
-  state.status = AutosaveStatus.Running
-  state.successfulToolCalls = []
-  state.successfulToolCallIds = []
-  state.mutationToolCallIds = []
-  state.runningSince = Date.now()
-  state.updatedAt = Date.now()
-}
-
-export const markMutationToolCall = (sessionId: string, callId?: string) => {
-  if (!callId) return
-  const state = getSessionState(sessionId)
-  if (!state.mutationToolCallIds.includes(callId)) {
-    state.mutationToolCallIds.push(callId)
-    state.updatedAt = Date.now()
-  }
-}
-
-export const shouldCountSuccessfulTool = (sessionId: string, tool: string, callId?: string) => {
-  const state = getSessionState(sessionId)
-  if (tool === "mempalace_memory") {
-    return !!callId && state.mutationToolCallIds.includes(callId)
-  }
-  return false
-}
-
-export const recordSuccessfulTool = (sessionId: string, tool: string, callId?: string) => {
-  const state = getSessionState(sessionId)
-  if (callId && state.successfulToolCallIds.includes(callId)) return
-  if (!state.successfulToolCalls.includes(tool)) state.successfulToolCalls.push(tool)
-  if (callId) state.successfulToolCallIds.push(callId)
-  state.lastToolCallAt = Date.now()
-  state.updatedAt = Date.now()
-}
-
-export const finalizeAutosave = (sessionId: string) => {
-  const state = getSessionState(sessionId)
-  if (state.status !== AutosaveStatus.Running) return state
-  const succeeded =
-    state.successfulToolCalls.length > 0 &&
-    (!state.runningSince || (state.lastToolCallAt != null && state.lastToolCallAt >= state.runningSince))
-  state.status = succeeded ? AutosaveStatus.Saved : AutosaveStatus.Noop
-  state.lastHandledUserDigest = state.pendingUserDigest
-  state.lastHandledTranscriptDigest = state.pendingTranscriptDigest
-  state.retryCount = succeeded ? 0 : state.retryCount
-  state.pendingReason = undefined
-  state.pendingUserDigest = undefined
-  state.pendingTranscriptDigest = undefined
-  state.successfulToolCalls = []
-  state.successfulToolCallIds = []
-  state.mutationToolCallIds = []
-  state.runningSince = undefined
-  state.lastToolCallAt = undefined
-  state.updatedAt = Date.now()
-  return state
 }
 
 export const markFailed = (sessionId: string) => {
@@ -250,14 +178,6 @@ export const markFailed = (sessionId: string) => {
   state.status = AutosaveStatus.Failed
   state.retryCount += 1
   state.lastFailureAt = Date.now()
-  state.pendingReason = undefined
-  state.pendingUserDigest = undefined
-  state.pendingTranscriptDigest = undefined
-  state.successfulToolCalls = []
-  state.successfulToolCallIds = []
-  state.mutationToolCallIds = []
-  state.runningSince = undefined
-  state.lastToolCallAt = undefined
   state.updatedAt = Date.now()
   return state
 }
@@ -268,7 +188,6 @@ export const shouldScheduleAutosave = (
   transcriptDigest: string,
 ) => {
   const state = getSessionState(sessionId)
-  if (state.status === AutosaveStatus.Pending || state.status === AutosaveStatus.Running) return false
   if (state.status === AutosaveStatus.Failed) {
     if (state.retryCount >= MAX_RETRIES) return false
     if (state.lastFailureAt && Date.now() - state.lastFailureAt < RETRY_COOLDOWN_MS) return false
@@ -276,4 +195,15 @@ export const shouldScheduleAutosave = (
   if (state.lastHandledUserDigest === userDigest) return false
   if (state.lastHandledTranscriptDigest === transcriptDigest) return false
   return true
+}
+
+export const buildTranscriptText = (messages: readonly MessageLike[] | null | undefined) => {
+  const lines: string[] = []
+  for (const message of messages ?? []) {
+    const role = extractRole(message)
+    const text = extractTextParts(message).map((part) => stripPrivateContent(part)).join("\n").trim()
+    if (!text) continue
+    lines.push(`${role.toUpperCase()}: ${text}`)
+  }
+  return lines.join("\n\n")
 }

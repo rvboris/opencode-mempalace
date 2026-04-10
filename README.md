@@ -25,11 +25,11 @@ flowchart TD
     U[User message] --> OC[OpenCode turn]
     OC --> EV[Plugin hooks]
     EV --> RET[Hidden retrieval instruction]
-    EV --> AS[Autosave pending on idle/compaction]
+    EV --> MINE[Direct auto-mine on idle or delete]
     RET --> LLM[Model]
-    AS --> LLM
     LLM --> TOOL[mempalace_memory]
     TOOL --> ADAPTER[Python adapter]
+    MINE --> ADAPTER
     ADAPTER --> MP[MemPalace backend]
     MP --> ADAPTER
     ADAPTER --> TOOL
@@ -121,7 +121,7 @@ On normal user turns the plugin can inject hidden retrieval guidance so the mode
 
 ### Autosave
 
-On `session.idle` and `session.compacted`, the plugin marks autosave as pending. The actual write happens on the next model turn through `mempalace_memory`.
+On `session.idle`, `session.compacted`, and `session.deleted`, the plugin can mine session context directly through the Python adapter. Structured manual saves still go through `mempalace_memory`.
 
 ### Safe wrapper tool
 
@@ -227,4 +227,5 @@ opencode --log-level DEBUG
 - no visible autosave chat messages
 - no OpenCode tool-to-tool calls
 - adapter uses stdin/stdout streaming
+- autosave is plugin-driven; manual memory actions use `mempalace_memory`
 - package is publishable as a standard OpenCode plugin
