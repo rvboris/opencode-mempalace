@@ -1,10 +1,5 @@
+import { DIRECT_MEMPALACE_MUTATION_TOOLS } from "./constants"
+
 export const isDirectMempalaceMutationTool = (tool: string) => {
-  return [
-    "mempalace_add_drawer",
-    "mempalace_kg_add",
-    "mempalace_diary_write",
-    "mcp-router_mempalace_add_drawer",
-    "mcp-router_mempalace_kg_add",
-    "mcp-router_mempalace_diary_write",
-  ].includes(tool)
+  return DIRECT_MEMPALACE_MUTATION_TOOLS.includes(tool as (typeof DIRECT_MEMPALACE_MUTATION_TOOLS)[number])
 }

@@ -2,17 +2,20 @@ import { describe, expect, it } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import type { AppLoggerClient } from "../plugin/lib/types"
+
+type AppLogInput = Parameters<NonNullable<NonNullable<AppLoggerClient["app"]>["log"]>>[0]
 
 describe("writeLog", () => {
   it("forwards logs to client.app.log", async () => {
-    const calls: any[] = []
+    const calls: AppLogInput[] = []
     const { resetLogger, setLogger, writeLog } = await import("../plugin/lib/log")
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "mempalace-log-"))
     const logFile = path.join(tempDir, "autosave.log")
     process.env.MEMPALACE_AUTOSAVE_LOG_FILE = logFile
     setLogger({
       app: {
-        log: async (input: { body: any }) => {
+        log: async (input: AppLogInput) => {
           calls.push(input)
           return true
         },

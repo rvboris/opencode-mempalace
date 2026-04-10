@@ -1,8 +1,9 @@
 import { describe, expect, it, mock } from "bun:test"
+import type { AdapterRequest } from "../plugin/lib/types"
 
-const adapterCalls: any[] = []
+const adapterCalls: AdapterRequest[] = []
 mock.module("../plugin/lib/adapter", () => ({
-  executeAdapter: async (_shell: any, payload: any) => {
+  executeAdapter: async (_shell: unknown, payload: AdapterRequest) => {
     adapterCalls.push(payload)
     return { success: true }
   },

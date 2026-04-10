@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { ENV_KEYS, LOG_FILE_NAME, SERVICE_NAME } from "./constants"
 import type { AppLoggerClient } from "./types"
 
 type LogLevel = "INFO" | "WARN" | "ERROR"
@@ -10,7 +11,7 @@ type Logger = (level: LogLevel, message: string, details?: Record<string, unknow
 let logger: Logger = async () => {}
 
 const getFileLogPath = () => {
-  return process.env.MEMPALACE_AUTOSAVE_LOG_FILE || path.join(os.homedir(), ".mempalace", "opencode_autosave.log")
+  return process.env[ENV_KEYS.autosaveLogFile] || path.join(os.homedir(), ".mempalace", LOG_FILE_NAME)
 }
 
 const writeFileLog = async (level: LogLevel, message: string, details?: Record<string, unknown>) => {
@@ -39,7 +40,7 @@ export const setLogger = (client: AppLoggerClient) => {
     try {
       await client.app?.log?.({
         body: {
-          service: "mempalace-autosave",
+          service: SERVICE_NAME,
           level: toAppLevel(level),
           message,
           extra: details,

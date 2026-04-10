@@ -1,18 +1,26 @@
 import { describe, expect, it, mock } from "bun:test"
+import type { AdapterRequest } from "../plugin/lib/types"
+
+const createSchemaStub = () => ({
+  optional: () => ({ default: () => ({}) }),
+  default: () => ({}),
+})
+
+const mockTool = Object.assign(<T>(input: T) => input, {
+  schema: {
+    enum: (_values: readonly string[]) => createSchemaStub(),
+    string: () => createSchemaStub(),
+    number: () => createSchemaStub(),
+  },
+})
 
 mock.module("@opencode-ai/plugin", () => ({
-  tool: Object.assign((input: any) => input, {
-    schema: {
-      enum: (_values: string[]) => ({ optional: () => ({ default: () => ({}) }), default: () => ({}) }),
-      string: () => ({ optional: () => ({ default: () => ({}) }), default: () => ({}) }),
-      number: () => ({ optional: () => ({ default: () => ({}) }), default: () => ({}) }),
-    },
-  }),
+  tool: mockTool,
 }))
 
-const adapterCalls: any[] = []
+const adapterCalls: AdapterRequest[] = []
 mock.module("../plugin/lib/adapter", () => ({
-  executeAdapter: async (_shell: any, payload: any) => {
+  executeAdapter: async (_shell: unknown, payload: AdapterRequest) => {
     adapterCalls.push(payload)
     return { success: true, payload }
   },

@@ -26,11 +26,18 @@ export type SessionAutosaveState = {
   lastRetrievedUserDigest?: string
   retryCount: number
   lastFailureAt?: number
+  messageSnapshot?: SessionMessageSnapshot
   updatedAt: number
 }
 
+export type SessionMessageSnapshot = {
+  userDigest: string
+  transcriptDigest: string
+  lastUserMessage: string
+  transcript: string
+}
+
 const states = new Map<string, SessionAutosaveState>()
-let currentTurnSessionId: string | undefined
 const MAX_SESSIONS = 200
 const STATE_TTL_MS = 1000 * 60 * 60 * 12
 const RETRY_COOLDOWN_MS = 1000 * 30
@@ -73,6 +80,15 @@ export const buildTranscriptDigest = (messages: readonly MessageLike[] | null | 
   return fingerprint(normalized)
 }
 
+export const buildMessageSnapshot = (messages: readonly MessageLike[] | null | undefined): SessionMessageSnapshot => {
+  return {
+    userDigest: buildUserDigest(messages),
+    transcriptDigest: buildTranscriptDigest(messages),
+    lastUserMessage: extractLastUserMessage(messages),
+    transcript: buildTranscriptText(messages),
+  }
+}
+
 const createState = (): SessionAutosaveState => ({
   status: AutosaveStatus.Idle,
   retryCount: 0,
@@ -94,12 +110,6 @@ export const getSessionState = (sessionId: string) => {
   return state
 }
 
-export const setCurrentTurnSessionId = (sessionId: string | undefined) => {
-  currentTurnSessionId = sessionId
-}
-
-export const getCurrentTurnSessionId = () => currentTurnSessionId
-
 const evictExpiredStates = () => {
   const now = Date.now()
   for (const [sessionId, state] of states) {
@@ -117,7 +127,6 @@ const evictOverflowStates = () => {
 
 export const resetAllStates = () => {
   states.clear()
-  currentTurnSessionId = undefined
 }
 
 export const markAutosaveComplete = (
@@ -152,6 +161,16 @@ export const markRetrievalPending = (sessionId: string, userDigest: string) => {
   state.retrievalPending = true
   state.pendingRetrievalUserDigest = userDigest
   state.updatedAt = Date.now()
+}
+
+export const setMessageSnapshot = (sessionId: string, snapshot: SessionMessageSnapshot) => {
+  const state = getSessionState(sessionId)
+  state.messageSnapshot = snapshot
+  state.updatedAt = Date.now()
+}
+
+export const getMessageSnapshot = (sessionId: string) => {
+  return getSessionState(sessionId).messageSnapshot
 }
 
 export const markKeywordSavePending = (sessionId: string) => {

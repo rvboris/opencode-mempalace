@@ -2,10 +2,11 @@ import { tool } from "@opencode-ai/plugin"
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
 import { sanitizeText } from "../lib/derive"
+import { DATE_ISO_SLICE, DEFAULT_AGENT_NAME, DEFAULT_LIMIT, DEFAULT_ROOM, DEFAULT_TOPIC, ERROR_MESSAGES, TOOL_DESCRIPTIONS } from "../lib/constants"
+import { getProjectName } from "../lib/opencode"
 import { isFullyPrivate, redactSecrets } from "../lib/privacy"
 import { getProjectScope, getUserScope } from "../lib/scope"
 import { MEMORY_SCOPES, TOOL_MEMORY_MODES, type MemoryScope, type ToolContext } from "../lib/types"
-import { DEFAULT_ROOM, DEFAULT_TOPIC, DEFAULT_AGENT_NAME, DATE_ISO_SLICE, DEFAULT_LIMIT, ERROR_MESSAGES } from "../lib/constants"
 
 type SaveArgs = {
   mode: "save"
@@ -40,12 +41,6 @@ type DiaryWriteArgs = {
 
 type MemoryToolArgs = SaveArgs | SearchArgs | KgAddArgs | DiaryWriteArgs
 
-const getProjectName = (project: unknown) => {
-  return typeof project === "object" && project !== null && "name" in project && typeof project.name === "string"
-    ? project.name
-    : undefined
-}
-
 const getProjectWing = (projectName: string | undefined, prefix: string) => {
   return getProjectScope(projectName, prefix).wing
 }
@@ -62,7 +57,7 @@ const normalizeValue = (value: string | undefined, redact: boolean) => {
 
 export const mempalaceMemoryTool = (ctx: ToolContext) =>
   tool({
-    description: "Save or search memory in MemPalace with scope/privacy enforcement",
+    description: TOOL_DESCRIPTIONS.mempalaceMemory,
     args: {
       mode: tool.schema.enum([...TOOL_MEMORY_MODES]),
       scope: tool.schema.enum([...MEMORY_SCOPES]).optional().default("project"),

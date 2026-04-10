@@ -43,4 +43,22 @@ describe("config and privacy", () => {
     delete process.env.MEMPALACE_KEYWORD_SAVE_ENABLED
     resetConfig()
   })
+
+  it("parses env booleans strictly", async () => {
+    process.env.MEMPALACE_AUTOSAVE_ENABLED = "0"
+    process.env.MEMPALACE_RETRIEVAL_ENABLED = "FALSE"
+    process.env.MEMPALACE_KEYWORD_SAVE_ENABLED = "yes"
+    resetConfig()
+
+    const config = await loadConfig()
+
+    expect(config.autosaveEnabled).toBe(false)
+    expect(config.retrievalEnabled).toBe(false)
+    expect(config.keywordSaveEnabled).toBe(true)
+
+    delete process.env.MEMPALACE_AUTOSAVE_ENABLED
+    delete process.env.MEMPALACE_RETRIEVAL_ENABLED
+    delete process.env.MEMPALACE_KEYWORD_SAVE_ENABLED
+    resetConfig()
+  })
 })

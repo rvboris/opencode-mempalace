@@ -1,3 +1,4 @@
+import { LOG_MESSAGES, TOOL_ERROR_MESSAGES } from "../lib/constants"
 import { writeLog } from "../lib/log"
 import { isDirectMempalaceMutationTool } from "../lib/enforcement"
 
@@ -8,11 +9,11 @@ export const toolHooks = () => {
       _output: { args: Record<string, unknown> },
     ) => {
       if (isDirectMempalaceMutationTool(input.tool)) {
-        await writeLog("WARN", "blocked direct mempalace mutation tool", {
+        await writeLog("WARN", LOG_MESSAGES.blockedDirectMempalaceMutationTool, {
           tool: input.tool,
           sessionId: input.sessionID,
         })
-        throw new Error("Use mempalace_memory instead of direct MemPalace mutation tools")
+        throw new Error(TOOL_ERROR_MESSAGES.directMutationBlocked)
       }
     },
   }

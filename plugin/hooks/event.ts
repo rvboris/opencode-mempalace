@@ -1,19 +1,20 @@
 import {
   AutosaveReason,
   AutosaveStatus,
-  buildTranscriptText,
-  buildTranscriptDigest,
-  buildUserDigest,
-  extractLastUserMessage,
+  buildMessageSnapshot,
+  getMessageSnapshot,
   getSessionState,
   markAutosaveComplete,
   markKeywordSavePending,
   markFailed,
   markRetrievalPending,
+  setMessageSnapshot,
   shouldScheduleAutosave,
 } from "../lib/autosave"
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
+import { COMPACTION_CONTEXT_MESSAGE, DEFAULT_AGENT_NAME, LOG_MESSAGES } from "../lib/constants"
+import { getProjectName, loadSessionMessages } from "../lib/opencode"
 import { redactSecrets } from "../lib/privacy"
 import { getProjectScope } from "../lib/scope"
 import { writeLog } from "../lib/log"
@@ -34,12 +35,6 @@ const isAutosaveTriggerEventType = (value: string): value is SessionEventType =>
   return AUTOSAVE_TRIGGER_EVENT_TYPES.has(value as SessionEventType)
 }
 
-const getProjectName = (project: unknown) => {
-  return typeof project === "object" && project !== null && "name" in project && typeof project.name === "string"
-    ? project.name
-    : undefined
-}
-
 const getSessionId = (event: SessionEvent) => {
   const properties = event.properties as { sessionID?: string; info?: { id?: string } } | undefined
   return properties?.sessionID ?? properties?.info?.id
@@ -51,13 +46,6 @@ const toReason = (eventType: string): AutosaveReason => {
   return AutosaveReason.Idle
 }
 
-const loadMessages = async (ctx: EventHookContext, sessionId: string) => {
-  const response = await ctx.client.session.messages({ path: { id: sessionId } })
-  if (Array.isArray(response)) return response
-  if (response && "data" in response && Array.isArray(response.data)) return response.data
-  return []
-}
-
 export const eventHooks = (ctx: EventHookContext) => {
   return {
     event: async ({ event }: { event: SessionEvent }) => {
@@ -66,37 +54,37 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         const sessionId = getSessionId(event)
         if (!sessionId) {
-          await writeLog("WARN", "autosave event missing sessionID", { eventType: event.type })
+          await writeLog("WARN", LOG_MESSAGES.autosaveEventMissingSessionId, { eventType: event.type })
           return
         }
 
         const config = await loadConfig()
         if (event.type === "session.updated" || event.type === "message.updated") {
-          const messages = await loadMessages(ctx, sessionId)
-          const userDigest = buildUserDigest(messages)
+          const snapshot = buildMessageSnapshot(await loadSessionMessages(ctx.client, sessionId))
+          setMessageSnapshot(sessionId, snapshot)
           if (config.retrievalEnabled) {
-            markRetrievalPending(sessionId, userDigest)
+            markRetrievalPending(sessionId, snapshot.userDigest)
           }
-          const lastUserMessage = extractLastUserMessage(messages)
+          const lastUserMessage = snapshot.lastUserMessage
           if (lastUserMessage && config.keywordSaveEnabled && config.keywordPatterns.length) {
             const keywordPattern = new RegExp(`\\b(${config.keywordPatterns.map(escapeRegex).join("|")})\\b`, "i")
             if (config.keywordSaveEnabled && keywordPattern.test(lastUserMessage)) {
               markKeywordSavePending(sessionId)
-              await writeLog("INFO", "keyword-triggered autosave hint detected", { sessionId })
+              await writeLog("INFO", LOG_MESSAGES.keywordTriggeredAutosaveHintDetected, { sessionId })
             }
           }
         }
 
         if (!isAutosaveTriggerEventType(event.type)) return
 
-        await writeLog("INFO", "autosave trigger received", {
+        await writeLog("INFO", LOG_MESSAGES.autosaveTriggerReceived, {
           eventType: event.type,
           sessionId,
         })
 
         if (event.type === "session.error") {
           const failed = markFailed(sessionId)
-          await writeLog("ERROR", "autosave failed on session error", {
+          await writeLog("ERROR", LOG_MESSAGES.autosaveFailedOnSessionError, {
             sessionId,
             retryCount: failed.retryCount,
           })
@@ -105,11 +93,15 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         if (!config.autosaveEnabled) return
 
-        const messages = await loadMessages(ctx, sessionId)
-        const userDigest = buildUserDigest(messages)
-        const transcriptDigest = buildTranscriptDigest(messages)
+        const cachedSnapshot = getMessageSnapshot(sessionId)
+        const snapshot = cachedSnapshot ?? buildMessageSnapshot(await loadSessionMessages(ctx.client, sessionId))
+        if (!cachedSnapshot) {
+          setMessageSnapshot(sessionId, snapshot)
+        }
+
+        const { transcript, transcriptDigest, userDigest } = snapshot
         if (!shouldScheduleAutosave(sessionId, userDigest, transcriptDigest)) {
-          await writeLog("INFO", "skipping autosave state", {
+          await writeLog("INFO", LOG_MESSAGES.skippingAutosaveState, {
             sessionId,
             reason: toReason(event.type),
             userDigest,
@@ -119,25 +111,25 @@ export const eventHooks = (ctx: EventHookContext) => {
           return
         }
 
-        const transcript = redactSecrets(buildTranscriptText(messages))
-        if (!transcript.trim()) {
+        const redactedTranscript = redactSecrets(transcript)
+        if (!redactedTranscript.trim()) {
           markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Noop)
-          await writeLog("INFO", "autosave skipped empty transcript", { sessionId })
+          await writeLog("INFO", LOG_MESSAGES.autosaveSkippedEmptyTranscript, { sessionId })
           return
         }
 
         const wing = getProjectScope(getProjectName(ctx.project), config.projectWingPrefix).wing
         const result = await executeAdapter(ctx.$, {
           mode: "mine_messages",
-          transcript,
+          transcript: redactedTranscript,
           wing,
           extract_mode: config.autoMineExtractMode,
-          agent: "opencode",
+          agent: DEFAULT_AGENT_NAME,
         })
 
         if (result?.success === false) {
           const failed = markFailed(sessionId)
-          await writeLog("ERROR", "autosave mining failed", {
+          await writeLog("ERROR", LOG_MESSAGES.autosaveMiningFailed, {
             sessionId,
             retryCount: failed.retryCount,
             result,
@@ -146,7 +138,7 @@ export const eventHooks = (ctx: EventHookContext) => {
         }
 
         const completed = markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Saved)
-        await writeLog("INFO", "autosave mined session context", {
+        await writeLog("INFO", LOG_MESSAGES.autosaveMinedSessionContext, {
           sessionId,
           reason: toReason(event.type),
           userDigest,
@@ -155,7 +147,7 @@ export const eventHooks = (ctx: EventHookContext) => {
           wing,
         })
       } catch (error) {
-        await writeLog("ERROR", "event hook failed", {
+        await writeLog("ERROR", LOG_MESSAGES.eventHookFailed, {
           error: error instanceof Error ? error.message : String(error),
         })
       }
@@ -165,13 +157,11 @@ export const eventHooks = (ctx: EventHookContext) => {
       output: { context: string[]; prompt?: string },
       ) => {
       if (!input.sessionID) {
-        await writeLog("WARN", "compaction hook missing sessionID", {})
+        await writeLog("WARN", LOG_MESSAGES.compactionHookMissingSessionId, {})
         return
       }
-      output.context.push(
-        "MemPalace retrieval may be useful after compaction. Search relevant project and user memory if needed before answering.",
-      )
-      await writeLog("INFO", "injected compaction autosave context", {
+      output.context.push(COMPACTION_CONTEXT_MESSAGE)
+      await writeLog("INFO", LOG_MESSAGES.injectedCompactionAutosaveContext, {
         sessionId: input.sessionID,
         reason: AutosaveReason.Compacted,
       })

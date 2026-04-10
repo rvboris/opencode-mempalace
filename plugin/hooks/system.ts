@@ -1,39 +1,35 @@
 import {
+  buildMessageSnapshot,
   clearKeywordSavePending,
-  extractLastUserMessage,
-  getCurrentTurnSessionId,
+  getMessageSnapshot,
   getSessionState,
   markRetrievalInjected,
+  setMessageSnapshot,
 } from "../lib/autosave"
 import { loadConfig } from "../lib/config"
+import { LOG_MESSAGES } from "../lib/constants"
 import { buildKeywordSaveInstruction, buildRetrievalInstruction } from "../lib/context"
 import { writeLog } from "../lib/log"
+import { getProjectName, loadSessionMessages } from "../lib/opencode"
 import type { SystemHookContext } from "../lib/types"
-
-const getProjectName = (project: unknown) => {
-  return typeof project === "object" && project !== null && "name" in project && typeof project.name === "string"
-    ? project.name
-    : undefined
-}
 
 export const systemHooks = (ctx: SystemHookContext) => {
   return {
     "experimental.chat.system.transform": async (
-      _input: {},
+      input: { sessionID?: string },
       output: { system: string[] },
     ) => {
       try {
-        const sessionId = getCurrentTurnSessionId()
+        const sessionId = input.sessionID
         if (!sessionId) return
         const config = await loadConfig()
         const state = getSessionState(sessionId)
-        const response = await ctx.client.session.messages({ path: { id: sessionId } })
-        const messages = Array.isArray(response)
-          ? response
-          : response && "data" in response && Array.isArray(response.data)
-            ? response.data
-            : []
-        const lastUserMessage = extractLastUserMessage(messages)
+        const cachedSnapshot = getMessageSnapshot(sessionId)
+        const snapshot = cachedSnapshot ?? buildMessageSnapshot(await loadSessionMessages(ctx.client, sessionId))
+        if (!cachedSnapshot) {
+          setMessageSnapshot(sessionId, snapshot)
+        }
+        const lastUserMessage = snapshot.lastUserMessage
 
         if (config.retrievalEnabled && state.retrievalPending && lastUserMessage) {
           output.system.push(
@@ -48,16 +44,16 @@ export const systemHooks = (ctx: SystemHookContext) => {
           )
 
           markRetrievalInjected(sessionId)
-          await writeLog("INFO", "injected retrieval instruction", { sessionId })
+          await writeLog("INFO", LOG_MESSAGES.injectedRetrievalInstruction, { sessionId })
         }
 
         if (state.keywordSavePending) {
           output.system.push(buildKeywordSaveInstruction())
           clearKeywordSavePending(sessionId)
-          await writeLog("INFO", "injected keyword save instruction", { sessionId })
+          await writeLog("INFO", LOG_MESSAGES.injectedKeywordSaveInstruction, { sessionId })
         }
       } catch (error) {
-        await writeLog("ERROR", "system transform hook failed", {
+        await writeLog("ERROR", LOG_MESSAGES.systemTransformHookFailed, {
           error: error instanceof Error ? error.message : String(error),
         })
       }

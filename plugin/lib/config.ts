@@ -2,12 +2,14 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import {
-  DEFAULT_ROOM,
-  DEFAULT_TOPIC,
   DEFAULT_EXTRACT_MODE,
   DEFAULT_INJECTED_ITEMS,
   DEFAULT_RETRIEVAL_LIMIT,
-  SERVICE_NAME,
+  DEFAULT_KEYWORD_PATTERNS,
+  DEFAULT_PROJECT_WING_PREFIX,
+  DEFAULT_USER_WING_PREFIX,
+  CONFIG_PATH_SEGMENTS,
+  ENV_KEYS,
 } from "./constants"
 
 export type MempalaceConfig = Readonly<{
@@ -27,16 +29,16 @@ const DEFAULT_CONFIG: MempalaceConfig = {
   autosaveEnabled: true,
   retrievalEnabled: true,
   keywordSaveEnabled: true,
-  autoMineExtractMode: DEFAULT_EXTRACT_MODE,
-  maxInjectedItems: DEFAULT_INJECTED_ITEMS,
-  retrievalQueryLimit: DEFAULT_RETRIEVAL_LIMIT,
-  keywordPatterns: ["remember", "save this", "don't forget", "note that"],
-  privacyRedactionEnabled: true,
-  userWingPrefix: "wing_user",
-  projectWingPrefix: "wing_project",
+    autoMineExtractMode: DEFAULT_EXTRACT_MODE,
+    maxInjectedItems: DEFAULT_INJECTED_ITEMS,
+    retrievalQueryLimit: DEFAULT_RETRIEVAL_LIMIT,
+    keywordPatterns: DEFAULT_KEYWORD_PATTERNS,
+    privacyRedactionEnabled: true,
+    userWingPrefix: DEFAULT_USER_WING_PREFIX,
+    projectWingPrefix: DEFAULT_PROJECT_WING_PREFIX,
 }
 
-const CONFIG_PATH = path.join(os.homedir(), ".config", "opencode", "mempalace.jsonc")
+const CONFIG_PATH = path.join(os.homedir(), ...CONFIG_PATH_SEGMENTS)
 
 type ConfigRecord = Partial<Record<keyof MempalaceConfig, unknown>>
 
@@ -46,7 +48,10 @@ const stripJsonComments = (value: string) => {
 
 const parseBoolean = (value: string | undefined, fallback: boolean) => {
   if (value == null) return fallback
-  return value !== "false"
+  const normalized = value.trim().toLowerCase()
+  if (["true", "1", "yes", "on"].includes(normalized)) return true
+  if (["false", "0", "no", "off", ""].includes(normalized)) return false
+  return fallback
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -95,44 +100,44 @@ export const loadConfig = async (): Promise<MempalaceConfig> => {
 
   cachedConfig = {
     autosaveEnabled: parseBoolean(
-      process.env.MEMPALACE_AUTOSAVE_ENABLED,
+      process.env[ENV_KEYS.autosaveEnabled],
       readBoolean(fileConfig.autosaveEnabled, DEFAULT_CONFIG.autosaveEnabled),
     ),
     retrievalEnabled: parseBoolean(
-      process.env.MEMPALACE_RETRIEVAL_ENABLED,
+      process.env[ENV_KEYS.retrievalEnabled],
       readBoolean(fileConfig.retrievalEnabled, DEFAULT_CONFIG.retrievalEnabled),
     ),
     keywordSaveEnabled: parseBoolean(
-      process.env.MEMPALACE_KEYWORD_SAVE_ENABLED,
+      process.env[ENV_KEYS.keywordSaveEnabled],
       readBoolean(fileConfig.keywordSaveEnabled, DEFAULT_CONFIG.keywordSaveEnabled),
     ),
     autoMineExtractMode: readString(
-      process.env.MEMPALACE_AUTO_MINE_EXTRACT_MODE ?? fileConfig.autoMineExtractMode,
+      process.env[ENV_KEYS.extractMode] ?? fileConfig.autoMineExtractMode,
       DEFAULT_CONFIG.autoMineExtractMode,
     ),
     privacyRedactionEnabled: parseBoolean(
-      process.env.MEMPALACE_PRIVACY_REDACTION_ENABLED,
+      process.env[ENV_KEYS.privacyRedactionEnabled],
       readBoolean(fileConfig.privacyRedactionEnabled, DEFAULT_CONFIG.privacyRedactionEnabled),
     ),
     maxInjectedItems: readPositiveNumber(
-      process.env.MEMPALACE_MAX_INJECTED_ITEMS != null
-        ? Number(process.env.MEMPALACE_MAX_INJECTED_ITEMS)
+      process.env[ENV_KEYS.maxInjectedItems] != null
+        ? Number(process.env[ENV_KEYS.maxInjectedItems])
         : fileConfig.maxInjectedItems,
       DEFAULT_CONFIG.maxInjectedItems,
     ),
     retrievalQueryLimit: readPositiveNumber(
-      process.env.MEMPALACE_RETRIEVAL_QUERY_LIMIT != null
-        ? Number(process.env.MEMPALACE_RETRIEVAL_QUERY_LIMIT)
+      process.env[ENV_KEYS.retrievalQueryLimit] != null
+        ? Number(process.env[ENV_KEYS.retrievalQueryLimit])
         : fileConfig.retrievalQueryLimit,
       DEFAULT_CONFIG.retrievalQueryLimit,
     ),
     keywordPatterns: readStringArray(fileConfig.keywordPatterns, DEFAULT_CONFIG.keywordPatterns),
     userWingPrefix: readString(
-      process.env.MEMPALACE_USER_WING_PREFIX ?? fileConfig.userWingPrefix,
+      process.env[ENV_KEYS.userWingPrefix] ?? fileConfig.userWingPrefix,
       DEFAULT_CONFIG.userWingPrefix,
     ),
     projectWingPrefix: readString(
-      process.env.MEMPALACE_PROJECT_WING_PREFIX ?? fileConfig.projectWingPrefix,
+      process.env[ENV_KEYS.projectWingPrefix] ?? fileConfig.projectWingPrefix,
       DEFAULT_CONFIG.projectWingPrefix,
     ),
   }
