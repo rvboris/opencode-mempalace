@@ -25,6 +25,10 @@
     "memory"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rvboris/opencode-mempalace.git"
+  },
   "peerDependencies": {
     "@opencode-ai/plugin": "^1.4.0"
   },
