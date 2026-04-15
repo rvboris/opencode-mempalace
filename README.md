@@ -1,72 +1,21 @@
 # OpenCode MemPalace Plugin
 
-> Persistent memory for OpenCode with hidden retrieval, autosave, and a safe MemPalace wrapper tool.
+OpenCode memory layer with private retrieval and safe autosave.
 
 [Русская версия](./README.ru.md)
 
-OpenCode plugin for hidden retrieval and autosave with [MemPalace](https://github.com/milla-jovovich/mempalace) through a local Python adapter.
+## Why it matters
 
-- OpenCode: https://opencode.ai
-- MemPalace: https://github.com/milla-jovovich/mempalace
+Keep OpenCode context-aware without extra prompts.
 
-## What it does
+- **Finds relevant memory automatically** before normal replies
+- **Saves durable knowledge quietly** in the background
+- **Keeps writes safe** through one controlled tool
+- **Protects sensitive data** before anything is stored
 
-- injects hidden retrieval hints before normal answers
-- marks autosave on session lifecycle events
-- exposes one safe memory tool: `mempalace_memory`
-- routes memory through enforced user/project scopes
-- applies privacy filtering before writes
-- logs to both OpenCode logs and a local file
+## Quick start
 
-## Architecture
-
-```mermaid
-flowchart TD
-    U[User message] --> OC[OpenCode turn]
-    OC --> EV[Plugin hooks]
-    EV --> RET[Hidden retrieval instruction]
-    EV --> MINE[Direct auto-mine on idle or delete]
-    RET --> LLM[Model]
-    LLM --> TOOL[mempalace_memory]
-    TOOL --> ADAPTER[Python adapter]
-    MINE --> ADAPTER
-    ADAPTER --> MP[MemPalace backend]
-    MP --> ADAPTER
-    ADAPTER --> TOOL
-    TOOL --> LLM
-```
-
-## Installation
-
-Add to `opencode.json`:
-
-```json
-{
-  "plugin": ["@rvboris/opencode-mempalace"]
-}
-```
-
-OpenCode installs plugin dependencies automatically.
-
-## Local development
-
-For source loading:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "file:///ABSOLUTE/PATH/TO/mempalace-autosave/plugin/index.ts"
-  ]
-}
-```
-
-The plugin itself does not require the MemPalace MCP server. It uses the bundled Python adapter.
-
-## Prerequisites
-
-- Python 3.9+
-- MemPalace installed and initialized
+Install MemPalace:
 
 ```bash
 pip install mempalace
@@ -74,28 +23,102 @@ mempalace init <dir>
 mempalace mine <dir>
 ```
 
-## Build
+Add the plugin to `opencode.json`:
 
-```bash
-npm run build
+```json
+{
+  "plugin": ["@rvboris/opencode-mempalace"]
+}
 ```
 
-This builds TypeScript into `dist/` and copies the adapter to `dist/bridge/`.
+That is enough to enable memory search, autosave, and `mempalace_memory`.
+
+## What you get
+
+- hidden memory lookup before answers
+- autosave on session lifecycle events
+- separate user and project memory
+- one safe memory tool for the model
+- local Python bridge to MemPalace
+
+The plugin does **not** require the MemPalace MCP server.
+
+## The one tool: `mempalace_memory`
+
+This is the only tool the model needs.
+
+### Modes
+
+- **`save`** — store a durable preference, fact, or decision
+- **`search`** — find relevant memory by query
+- **`kg_add`** — add a structured fact to the knowledge graph
+- **`diary_write`** — save a short work note or daily log
+- **`mine_messages`** — internal autosave mode used by the plugin
+
+### Examples
+
+Save a user preference:
+
+```text
+mempalace_memory
+  mode: save
+  scope: user
+  room: preferences
+  content: Prefers concise responses and numbered steps.
+```
+
+Save a project decision:
+
+```text
+mempalace_memory
+  mode: save
+  scope: project
+  room: decisions
+  content: Use Bun for builds and tests.
+```
+
+Search memory:
+
+```text
+mempalace_memory
+  mode: search
+  scope: project
+  room: workflow
+  query: build command
+  limit: 3
+```
+
+Add a graph fact:
+
+```text
+mempalace_memory
+  mode: kg_add
+  subject: my-repo
+  predicate: uses
+  object: bun
+```
+
+## Memory areas
+
+**User memory**
+
+- `preferences`
+- `workflow`
+- `communication`
+
+Use it for stable cross-project habits and preferences.
+
+**Project memory**
+
+- `architecture`
+- `workflow`
+- `decisions`
+- `bugs`
+- `setup`
+
+Use it for repository-specific knowledge.
 
 ## Configuration
-
-Environment variables:
-
-- `MEMPALACE_AUTOSAVE_ENABLED`
-- `MEMPALACE_RETRIEVAL_ENABLED`
-- `MEMPALACE_KEYWORD_SAVE_ENABLED`
-- `MEMPALACE_PRIVACY_REDACTION_ENABLED`
-- `MEMPALACE_MAX_INJECTED_ITEMS`
-- `MEMPALACE_RETRIEVAL_QUERY_LIMIT`
-- `MEMPALACE_AUTOSAVE_LOG_FILE`
-- `MEMPALACE_ADAPTER_PYTHON`
-- `MEMPALACE_USER_WING_PREFIX`
-- `MEMPALACE_PROJECT_WING_PREFIX`
 
 Optional config file: `~/.config/opencode/mempalace.jsonc`
 
@@ -106,126 +129,58 @@ Optional config file: `~/.config/opencode/mempalace.jsonc`
   "keywordSaveEnabled": true,
   "maxInjectedItems": 6,
   "retrievalQueryLimit": 5,
-  "keywordPatterns": ["remember", "save this", "don't forget", "note that"],
-  "privacyRedactionEnabled": true,
-  "userWingPrefix": "wing_user",
-  "projectWingPrefix": "wing_project"
+  "privacyRedactionEnabled": true
 }
 ```
 
-## Runtime behavior
+Useful environment variables:
 
-### Retrieval
-
-On normal user turns the plugin can inject hidden retrieval guidance so the model searches existing memory before answering.
-
-### Autosave
-
-On `session.idle`, `session.compacted`, and `session.deleted`, the plugin can mine session context directly through the Python adapter. Structured manual saves still go through `mempalace_memory`.
-
-### Safe wrapper tool
-
-The model should use only:
-
-- `mempalace_memory`
-
-Direct mutation tools are blocked:
-
-- `mempalace_add_drawer`
-- `mempalace_kg_add`
-- `mempalace_diary_write`
-- matching `mcp-router_*` variants
-
-## Scope policy
-
-### User scope
-
-- wing: `${MEMPALACE_USER_WING_PREFIX}_profile`
-- rooms: `preferences`, `workflow`, `communication`
-
-Use for:
-- response preferences
-- personal workflow habits
-- cross-project conventions
-
-### Project scope
-
-- wing: `${MEMPALACE_PROJECT_WING_PREFIX}_${slug(projectName)}`
-- rooms: `architecture`, `workflow`, `decisions`, `bugs`, `setup`
-
-Use for:
-- repo-specific setup
-- architecture decisions
-- build/test commands
-- bug/solution patterns
-
-## Examples
-
-### Save a user preference
-
-```text
-mempalace_memory
-  mode: save
-  scope: user
-  room: preferences
-  content: Prefers concise responses and numbered steps.
-```
-
-### Save a project decision
-
-```text
-mempalace_memory
-  mode: save
-  scope: project
-  room: decisions
-  content: Use Bun for builds and tests; avoid npm.
-```
-
-### Add KG fact
-
-```text
-mempalace_memory
-  mode: kg_add
-  scope: project
-  subject: my-repo
-  predicate: uses
-  object: bun
-```
-
-### Search memory
-
-```text
-mempalace_memory
-  mode: search
-  scope: user
-  room: preferences
-  query: user name
-  limit: 3
-```
+- `MEMPALACE_AUTOSAVE_ENABLED`
+- `MEMPALACE_RETRIEVAL_ENABLED`
+- `MEMPALACE_KEYWORD_SAVE_ENABLED`
+- `MEMPALACE_PRIVACY_REDACTION_ENABLED`
+- `MEMPALACE_AUTOSAVE_LOG_FILE`
+- `MEMPALACE_ADAPTER_PYTHON`
 
 ## Privacy
 
-- supports `<private>...</private>` blocks
+- respects `<private>...</private>` blocks
 - redacts common secrets before writes
-- refuses to save fully private content
+- skips fully private content
 
-## Logging
+## Project docs
 
-Logs are written to:
+- Release history: [`CHANGELOG.md`](./CHANGELOG.md)
+- Changelog rules: [`CONTRIBUTING.md#changelog`](./CONTRIBUTING.md#changelog)
 
-- OpenCode built-in logger
-- file log: `~/.mempalace/opencode_autosave.log`
+## Local development
 
-For debugging:
+Load from source:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "file:///ABSOLUTE/PATH/TO/mempalace-autosave/plugin/index.ts"
+  ]
+}
+```
+
+Build:
+
+```bash
+npm run build
+```
+
+Debug logs:
 
 ```bash
 opencode --log-level DEBUG
 ```
 
-## Notes
+File log: `~/.mempalace/opencode_autosave.log`
 
-- no visible autosave chat messages
-- no OpenCode tool-to-tool calls
-- adapter uses stdin/stdout streaming
-- autosave is plugin-driven; manual memory actions use `mempalace_memory`
-- package is publishable as a standard OpenCode plugin
+## Links
+
+- OpenCode: https://opencode.ai
+- MemPalace: https://github.com/milla-jovovich/mempalace

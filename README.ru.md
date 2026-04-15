@@ -1,44 +1,29 @@
 # Плагин MemPalace для OpenCode
 
-> Постоянная память для OpenCode: скрытый retrieval, autosave и безопасный wrapper tool для MemPalace.
+Слой памяти для OpenCode: скрытый поиск по памяти и безопасное автосохранение.
 
 [English version](./README.md)
 
-Плагин для [OpenCode](https://opencode.ai) со скрытым retrieval и autosave в [MemPalace](https://github.com/milla-jovovich/mempalace) через локальный Python adapter.
+## Зачем он нужен
 
-- OpenCode: https://opencode.ai
-- MemPalace: https://github.com/milla-jovovich/mempalace
+Чтобы OpenCode отвечал с учётом прошлого контекста — без лишних подсказок и без шума в чате.
 
-## Что делает
+- **Сам ищет нужную память** перед обычным ответом
+- **Тихо сохраняет важное** по ходу работы
+- **Пишет безопасно** через один контролируемый инструмент
+- **Учитывает приватность** перед сохранением
 
-- добавляет скрытые подсказки для retrieval перед обычным ответом
-- помечает autosave на событиях жизненного цикла сессии
-- дает один безопасный tool: `mempalace_memory`
-- направляет память в user/project scope по явным правилам
-- применяет privacy-фильтрацию перед записью
-- пишет логи в OpenCode и в локальный файл
+## Быстрый старт
 
-## Схема работы
+Установи MemPalace:
 
-```mermaid
-flowchart TD
-    U[Сообщение пользователя] --> OC[Ход OpenCode]
-    OC --> EV[Хуки плагина]
-    EV --> RET[Скрытая retrieval-инструкция]
-    EV --> MINE[Прямой auto-mine на idle или delete]
-    RET --> LLM[Модель]
-    LLM --> TOOL[mempalace_memory]
-    TOOL --> ADAPTER[Python adapter]
-    MINE --> ADAPTER
-    ADAPTER --> MP[MemPalace backend]
-    MP --> ADAPTER
-    ADAPTER --> TOOL
-    TOOL --> LLM
+```bash
+pip install mempalace
+mempalace init <dir>
+mempalace mine <dir>
 ```
 
-## Установка
-
-Добавь в `opencode.json`:
+Добавь плагин в `opencode.json`:
 
 ```json
 {
@@ -46,11 +31,131 @@ flowchart TD
 }
 ```
 
-OpenCode сам установит зависимости плагина при запуске.
+Этого достаточно, чтобы включить поиск по памяти, автосохранение и `mempalace_memory`.
+
+## Что ты получаешь
+
+- скрытый поиск по памяти перед ответом
+- автосохранение на событиях сессии
+- раздельную память для пользователя и проекта
+- один безопасный инструмент для работы с памятью
+- локальную Python-прослойку для MemPalace
+
+Самому плагину **не нужен** сервер MCP от MemPalace.
+
+## Основной инструмент: `mempalace_memory`
+
+Это единственный инструмент, который нужен модели.
+
+### Режимы
+
+- **`save`** — сохранить устойчивый факт, предпочтение или решение
+- **`search`** — найти релевантную память по запросу
+- **`kg_add`** — добавить структурированный факт в граф знаний
+- **`diary_write`** — записать короткую рабочую заметку
+- **`mine_messages`** — внутренний режим автосохранения, который использует сам плагин
+
+### Примеры
+
+Сохранить пользовательское предпочтение:
+
+```text
+mempalace_memory
+  mode: save
+  scope: user
+  room: preferences
+  content: Prefers concise responses and numbered steps.
+```
+
+Сохранить проектное решение:
+
+```text
+mempalace_memory
+  mode: save
+  scope: project
+  room: decisions
+  content: Use Bun for builds and tests.
+```
+
+Найти память:
+
+```text
+mempalace_memory
+  mode: search
+  scope: project
+  room: workflow
+  query: build command
+  limit: 3
+```
+
+Добавить факт в граф знаний:
+
+```text
+mempalace_memory
+  mode: kg_add
+  subject: my-repo
+  predicate: uses
+  object: bun
+```
+
+## Области памяти
+
+**Память пользователя**
+
+- `preferences`
+- `workflow`
+- `communication`
+
+Подходит для стабильных привычек и предпочтений, которые полезны в любом проекте.
+
+**Память проекта**
+
+- `architecture`
+- `workflow`
+- `decisions`
+- `bugs`
+- `setup`
+
+Подходит для знаний, привязанных к конкретному репозиторию.
+
+## Настройка
+
+Необязательный файл конфигурации: `~/.config/opencode/mempalace.jsonc`
+
+```jsonc
+{
+  "autosaveEnabled": true,
+  "retrievalEnabled": true,
+  "keywordSaveEnabled": true,
+  "maxInjectedItems": 6,
+  "retrievalQueryLimit": 5,
+  "privacyRedactionEnabled": true
+}
+```
+
+Полезные переменные окружения:
+
+- `MEMPALACE_AUTOSAVE_ENABLED`
+- `MEMPALACE_RETRIEVAL_ENABLED`
+- `MEMPALACE_KEYWORD_SAVE_ENABLED`
+- `MEMPALACE_PRIVACY_REDACTION_ENABLED`
+- `MEMPALACE_AUTOSAVE_LOG_FILE`
+- `MEMPALACE_ADAPTER_PYTHON`
+
+## Приватность
+
+- поддерживаются блоки `<private>...</private>`
+- типовые секреты скрываются перед записью
+- полностью приватное содержимое не сохраняется
+
+## Документация проекта
+
+- История изменений: [`CHANGELOG.md`](./CHANGELOG.md)
+- Правила ведения changelog: [`CONTRIBUTING.md#changelog`](./CONTRIBUTING.md#changelog)
 
 ## Локальная разработка
 
-Для загрузки из исходников:
+Загрузка из исходников:
 
 ```jsonc
 {
@@ -61,171 +166,21 @@ OpenCode сам установит зависимости плагина при 
 }
 ```
 
-Самому плагину MemPalace MCP server не нужен — он использует встроенный Python adapter.
-
-## Требования
-
-- Python 3.9+
-- установлен и инициализирован MemPalace
-
-```bash
-pip install mempalace
-mempalace init <dir>
-mempalace mine <dir>
-```
-
-## Сборка
+Сборка:
 
 ```bash
 npm run build
 ```
 
-Команда компилирует TypeScript в `dist/` и копирует adapter в `dist/bridge/`.
-
-## Конфигурация
-
-Переменные окружения:
-
-- `MEMPALACE_AUTOSAVE_ENABLED`
-- `MEMPALACE_RETRIEVAL_ENABLED`
-- `MEMPALACE_KEYWORD_SAVE_ENABLED`
-- `MEMPALACE_PRIVACY_REDACTION_ENABLED`
-- `MEMPALACE_MAX_INJECTED_ITEMS`
-- `MEMPALACE_RETRIEVAL_QUERY_LIMIT`
-- `MEMPALACE_AUTOSAVE_LOG_FILE`
-- `MEMPALACE_ADAPTER_PYTHON`
-- `MEMPALACE_USER_WING_PREFIX`
-- `MEMPALACE_PROJECT_WING_PREFIX`
-
-Дополнительно можно использовать файл `~/.config/opencode/mempalace.jsonc`:
-
-```jsonc
-{
-  "autosaveEnabled": true,
-  "retrievalEnabled": true,
-  "keywordSaveEnabled": true,
-  "maxInjectedItems": 6,
-  "retrievalQueryLimit": 5,
-  "keywordPatterns": ["remember", "save this", "don't forget", "note that"],
-  "privacyRedactionEnabled": true,
-  "userWingPrefix": "wing_user",
-  "projectWingPrefix": "wing_project"
-}
-```
-
-## Как работает во время сессии
-
-### Retrieval
-
-На обычных пользовательских ходах плагин может подмешивать скрытую retrieval-инструкцию, чтобы модель сначала поискала релевантную память.
-
-### Autosave
-
-На `session.idle`, `session.compacted` и `session.deleted` плагин может напрямую майнить контекст сессии через Python adapter. Структурированные ручные сохранения по-прежнему идут через `mempalace_memory`.
-
-### Безопасный wrapper tool
-
-Модель должна использовать только:
-
-- `mempalace_memory`
-
-Прямые mutating tools блокируются:
-
-- `mempalace_add_drawer`
-- `mempalace_kg_add`
-- `mempalace_diary_write`
-- соответствующие `mcp-router_*` варианты
-
-## Политика scope
-
-### User scope
-
-- wing: `${MEMPALACE_USER_WING_PREFIX}_profile`
-- rooms: `preferences`, `workflow`, `communication`
-
-Используется для:
-- предпочтений по ответам
-- личных привычек работы
-- кросс-проектных соглашений
-
-### Project scope
-
-- wing: `${MEMPALACE_PROJECT_WING_PREFIX}_${slug(projectName)}`
-- rooms: `architecture`, `workflow`, `decisions`, `bugs`, `setup`
-
-Используется для:
-- repo-specific setup
-- архитектурных решений
-- build/test команд
-- паттернов баг/решение
-
-## Примеры
-
-### Сохранить user preference
-
-```text
-mempalace_memory
-  mode: save
-  scope: user
-  room: preferences
-  content: Prefers concise responses and numbered steps.
-```
-
-### Сохранить project decision
-
-```text
-mempalace_memory
-  mode: save
-  scope: project
-  room: decisions
-  content: Use Bun for builds and tests; avoid npm.
-```
-
-### Добавить KG факт
-
-```text
-mempalace_memory
-  mode: kg_add
-  scope: project
-  subject: my-repo
-  predicate: uses
-  object: bun
-```
-
-### Поиск в памяти
-
-```text
-mempalace_memory
-  mode: search
-  scope: user
-  room: preferences
-  query: user name
-  limit: 3
-```
-
-## Privacy
-
-- поддерживаются блоки `<private>...</private>`
-- common secrets редактируются перед записью
-- полностью private content не сохраняется
-
-## Логи
-
-Логи пишутся в:
-
-- встроенный лог OpenCode
-- файл: `~/.mempalace/opencode_autosave.log`
-
-Для отладки:
+Журналы отладки:
 
 ```bash
 opencode --log-level DEBUG
 ```
 
-## Заметки
+Файл журнала: `~/.mempalace/opencode_autosave.log`
 
-- никаких видимых autosave-сообщений в чате
-- никаких OpenCode tool-to-tool вызовов
-- adapter использует stdin/stdout streaming
-- autosave выполняется самим plugin; ручные действия памяти идут через `mempalace_memory`
-- пакет подготовлен как полноценный publishable OpenCode plugin
+## Ссылки
+
+- OpenCode: https://opencode.ai
+- MemPalace: https://github.com/milla-jovovich/mempalace
