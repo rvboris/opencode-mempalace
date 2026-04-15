@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project aims to follow Semantic 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-16
+
 ### Added
 
 - `CHANGELOG.md` to keep a user-facing release history in the repository.

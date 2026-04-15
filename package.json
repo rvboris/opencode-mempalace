@@ -1,6 +1,6 @@
 {
   "name": "@rvboris/opencode-mempalace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCode plugin for hidden MemPalace retrieval and autosave via a local Python adapter.",
   "type": "module",
   "main": "dist/plugin/index.js",
