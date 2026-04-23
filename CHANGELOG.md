@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and the project aims to follow Semantic 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-24
+
+### Fixed
+
+- Restored memory search and save calls after newer MemPalace versions redirected adapter JSON output away from stdout.
+- Added clearer adapter errors when the Python bridge exits successfully without returning a JSON payload.
+- Updated GitHub Actions artifact steps for Node 24 compatibility in the release pipeline.
+
 ## [0.2.0] - 2026-04-16
 
 ### Added
