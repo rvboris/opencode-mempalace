@@ -53,6 +53,7 @@ export const TOOL_DESCRIPTIONS = {
 export const TOOL_ERROR_MESSAGES = {
   directMutationBlocked: "Use mempalace_memory instead of direct MemPalace mutation tools",
   invalidAdapterPayload: "Adapter returned an invalid JSON payload",
+  emptyAdapterStdout: "Adapter returned empty stdout",
   adapterTimedOut: "Adapter execution timed out",
 } as const
 

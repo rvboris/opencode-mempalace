@@ -8,17 +8,18 @@ from pathlib import Path
 
 from mempalace.config import MempalaceConfig
 from mempalace.convo_miner import mine_convos
-from mempalace.mcp_server import (
-    tool_add_drawer,
-    tool_diary_write,
-    tool_kg_add,
-    tool_search,
-)
+import mempalace.mcp_server as mcp_server
+
+
+restore_stdout = getattr(mcp_server, "_restore_stdout", None)
+if callable(restore_stdout):
+    restore_stdout()
 
 
 def write_result(result: dict) -> None:
     output = json.dumps(result, ensure_ascii=False)
     sys.stdout.buffer.write(output.encode("utf-8", errors="replace"))
+    sys.stdout.buffer.flush()
 
 
 def main() -> int:
@@ -27,21 +28,21 @@ def main() -> int:
 
         mode = payload["mode"]
         if mode == "search":
-            result = tool_search(
+            result = mcp_server.tool_search(
                 query=payload["query"],
                 limit=payload.get("limit", 5),
                 wing=payload.get("wing"),
                 room=payload.get("room"),
             )
         elif mode == "save":
-            result = tool_add_drawer(
+            result = mcp_server.tool_add_drawer(
                 wing=payload["wing"],
                 room=payload["room"],
                 content=payload["content"],
                 added_by=payload.get("added_by", "opencode"),
             )
         elif mode == "kg_add":
-            result = tool_kg_add(
+            result = mcp_server.tool_kg_add(
                 subject=payload["subject"],
                 predicate=payload["predicate"],
                 object=payload["object"],
@@ -49,7 +50,7 @@ def main() -> int:
                 source_closet=payload.get("source_closet", ""),
             )
         elif mode == "diary_write":
-            result = tool_diary_write(
+            result = mcp_server.tool_diary_write(
                 agent_name=payload["agent_name"],
                 entry=payload["entry"],
                 topic=payload.get("topic", "autosave"),
