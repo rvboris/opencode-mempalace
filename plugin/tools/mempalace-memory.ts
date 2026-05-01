@@ -6,6 +6,7 @@ import { DATE_ISO_SLICE, DEFAULT_AGENT_NAME, DEFAULT_LIMIT, DEFAULT_ROOM, DEFAUL
 import { getProjectName } from "../lib/opencode"
 import { isFullyPrivate, redactSecrets } from "../lib/privacy"
 import { getProjectScope, getUserScope } from "../lib/scope"
+import { recordMemoryWrite, recordRetrievalSearch } from "../lib/status"
 import { MEMORY_SCOPES, TOOL_MEMORY_MODES, type MemoryScope, type ToolContext } from "../lib/types"
 
 type SaveArgs = {
@@ -71,7 +72,7 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
       agent_name: tool.schema.string().optional().default(DEFAULT_AGENT_NAME),
       limit: tool.schema.number().optional().default(DEFAULT_LIMIT),
     },
-    async execute(args: MemoryToolArgs) {
+    async execute(args: MemoryToolArgs, executionContext: { sessionID?: string }) {
       const config = await loadConfig()
       const scope = args.scope ?? "project"
       const wing =
@@ -92,6 +93,15 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           content,
           added_by: DEFAULT_AGENT_NAME,
         })
+        if (result?.success !== false) {
+          await recordMemoryWrite({
+            sessionId: executionContext.sessionID,
+            mode: "save",
+            scope,
+            room: args.room,
+            preview: content,
+          })
+        }
         return JSON.stringify(result)
       }
 
@@ -105,6 +115,15 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           room: normalizeValue(args.room, false),
           limit: args.limit,
         })
+        if (result?.success !== false) {
+          await recordRetrievalSearch({
+            sessionId: executionContext.sessionID,
+            scope,
+            room: args.room,
+            query,
+            result,
+          })
+        }
         return JSON.stringify(result)
       }
 
@@ -123,6 +142,14 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           valid_from: new Date().toISOString().slice(0, DATE_ISO_SLICE),
           source_closet: "",
         })
+        if (result?.success !== false) {
+          await recordMemoryWrite({
+            sessionId: executionContext.sessionID,
+            mode: "kg_add",
+            scope,
+            preview: `${subject} ${predicate} ${object}`,
+          })
+        }
         return JSON.stringify(result)
       }
 
@@ -132,6 +159,14 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
         entry: normalizeValue(args.content || "", config.privacyRedactionEnabled) ?? "",
         topic: normalizeValue(args.topic, false) ?? DEFAULT_TOPIC,
       })
+      if (result?.success !== false) {
+        await recordMemoryWrite({
+          sessionId: executionContext.sessionID,
+          mode: "diary_write",
+          scope,
+          preview: normalizeValue(args.content || "", config.privacyRedactionEnabled) ?? "",
+        })
+      }
       return JSON.stringify(result)
     },
   })

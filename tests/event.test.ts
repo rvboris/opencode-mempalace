@@ -1,5 +1,9 @@
 import { describe, expect, it, mock } from "bun:test"
+import os from "node:os"
+import path from "node:path"
 import type { AdapterRequest } from "../plugin/lib/types"
+
+process.env.MEMPALACE_STATUS_FILE = path.join(os.tmpdir(), "mempalace-event-status.json")
 
 const adapterCalls: AdapterRequest[] = []
 mock.module("../plugin/lib/adapter", () => ({
@@ -12,11 +16,13 @@ mock.module("../plugin/lib/adapter", () => ({
 const { eventHooks } = await import("../plugin/hooks/event")
 const { AutosaveStatus, getSessionState, resetAllStates } = await import("../plugin/lib/autosave")
 const { resetConfig } = await import("../plugin/lib/config")
+const { readStatusState, resetStatusState } = await import("../plugin/lib/status")
 
 describe("eventHooks", () => {
   it("mines session on idle when session progressed", async () => {
     resetConfig()
     resetAllStates()
+    await resetStatusState()
     adapterCalls.length = 0
     const hooks = eventHooks({
       client: {
@@ -38,11 +44,15 @@ describe("eventHooks", () => {
     await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-1" } } })
     expect(adapterCalls[0].mode).toBe("mine_messages")
     expect(getSessionState("event-1").status).toBe(AutosaveStatus.Saved)
+    const status = await readStatusState()
+    expect(status.counters.autosavesCompleted).toBe(1)
+    expect(status.lastAutosave?.outcome).toBe("saved")
   })
 
   it("marks retrieval pending on normal message updates", async () => {
     resetConfig()
     resetAllStates()
+    await resetStatusState()
     const hooks = eventHooks({
       client: { session: { messages: async () => ({ data: [{ role: "user", content: "How do we build?" }] }) } },
       project: {},
@@ -52,5 +62,34 @@ describe("eventHooks", () => {
     })
     await hooks.event?.({ event: { type: "message.updated", properties: { sessionID: "event-2" } } })
     expect(getSessionState("event-2").retrievalPending).toBe(true)
+  })
+
+  it("sanitizes invalid unicode surrogates before autosave mining", async () => {
+    resetConfig()
+    resetAllStates()
+    await resetStatusState()
+    adapterCalls.length = 0
+    const hooks = eventHooks({
+      client: {
+        session: {
+          messages: async () => ({
+            data: [
+              { role: "user", content: "Call me Борис\udc81" },
+              { role: "assistant", content: "Got it." },
+            ],
+          }),
+        },
+      },
+      project: { name: "Demo" },
+      directory: "",
+      worktree: "",
+      $: async () => {},
+    })
+
+    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-3" } } })
+
+    expect(adapterCalls[0].mode).toBe("mine_messages")
+    expect(adapterCalls[0].transcript).toContain("Борис")
+    expect(/[\uDC00-\uDFFF]/.test(adapterCalls[0].transcript)).toBe(false)
   })
 })

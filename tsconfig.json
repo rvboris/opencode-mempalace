@@ -3,6 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/solid",
     "outDir": "dist",
     "rootDir": ".",
     "declaration": true,
@@ -12,6 +14,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["plugin/**/*.ts"],
+  "include": ["plugin/**/*.ts", "plugin/**/*.tsx"],
   "exclude": ["dist", "tests"]
 }

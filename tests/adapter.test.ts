@@ -85,4 +85,33 @@ describe("adapter bridge", () => {
       }),
     ).rejects.toThrow("stderr payload")
   })
+
+  it("handles mine_messages payloads with invalid unicode surrogates", () => {
+    const fixtureRoot = path.join(import.meta.dir, "fixtures", "fake_mempalace")
+    const pythonPathParts = [fixtureRoot, process.env.PYTHONPATH].filter(Boolean)
+    const payload: AdapterRequest = {
+      mode: "mine_messages",
+      transcript: "USER: Борис\udc81",
+      wing: "wing_project_demo",
+      extract_mode: "general",
+      agent: "opencode",
+    }
+
+    const result = spawnSync("python", [path.join(process.cwd(), "bridge", "mempalace_adapter.py")], {
+      input: JSON.stringify(payload),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PYTHONPATH: pythonPathParts.join(path.delimiter),
+      },
+    })
+
+    expect(result.status).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(JSON.parse(result.stdout)).toEqual({
+      success: true,
+      mode: "mine_messages",
+      wing: "wing_project_demo",
+    })
+  })
 })

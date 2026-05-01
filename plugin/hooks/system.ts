@@ -11,6 +11,7 @@ import { LOG_MESSAGES } from "../lib/constants"
 import { buildKeywordSaveInstruction, buildRetrievalInstruction } from "../lib/context"
 import { writeLog } from "../lib/log"
 import { getProjectName, loadSessionMessages } from "../lib/opencode"
+import { recordRetrievalPrompt } from "../lib/status"
 import type { SystemHookContext } from "../lib/types"
 
 export const systemHooks = (ctx: SystemHookContext) => {
@@ -44,6 +45,7 @@ export const systemHooks = (ctx: SystemHookContext) => {
           )
 
           markRetrievalInjected(sessionId)
+          await recordRetrievalPrompt({ sessionId, queryPreview: lastUserMessage })
           await writeLog("INFO", LOG_MESSAGES.injectedRetrievalInstruction, { sessionId })
         }
 

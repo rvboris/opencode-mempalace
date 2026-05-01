@@ -14,9 +14,11 @@ import {
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
 import { COMPACTION_CONTEXT_MESSAGE, DEFAULT_AGENT_NAME, LOG_MESSAGES } from "../lib/constants"
+import { sanitizeText } from "../lib/derive"
 import { getProjectName, loadSessionMessages } from "../lib/opencode"
 import { redactSecrets } from "../lib/privacy"
 import { getProjectScope } from "../lib/scope"
+import { recordAutosave } from "../lib/status"
 import { writeLog } from "../lib/log"
 import { SESSION_EVENT_TYPES, type EventHookContext, type SessionEvent, type SessionEventType } from "../lib/types"
 
@@ -84,6 +86,12 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         if (event.type === "session.error") {
           const failed = markFailed(sessionId)
+          await recordAutosave({
+            sessionId,
+            outcome: "failed",
+            reason: toReason(event.type),
+            sourcePreview: getMessageSnapshot(sessionId)?.lastUserMessage,
+          })
           await writeLog("ERROR", LOG_MESSAGES.autosaveFailedOnSessionError, {
             sessionId,
             retryCount: failed.retryCount,
@@ -101,6 +109,12 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         const { transcript, transcriptDigest, userDigest } = snapshot
         if (!shouldScheduleAutosave(sessionId, userDigest, transcriptDigest)) {
+          await recordAutosave({
+            sessionId,
+            outcome: "skipped",
+            reason: toReason(event.type),
+            sourcePreview: snapshot.lastUserMessage,
+          })
           await writeLog("INFO", LOG_MESSAGES.skippingAutosaveState, {
             sessionId,
             reason: toReason(event.type),
@@ -111,9 +125,15 @@ export const eventHooks = (ctx: EventHookContext) => {
           return
         }
 
-        const redactedTranscript = redactSecrets(transcript)
-        if (!redactedTranscript.trim()) {
+        const sanitizedTranscript = sanitizeText(redactSecrets(transcript))
+        if (!sanitizedTranscript.trim()) {
           markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Noop)
+          await recordAutosave({
+            sessionId,
+            outcome: "skipped",
+            reason: toReason(event.type),
+            sourcePreview: snapshot.lastUserMessage,
+          })
           await writeLog("INFO", LOG_MESSAGES.autosaveSkippedEmptyTranscript, { sessionId })
           return
         }
@@ -121,7 +141,7 @@ export const eventHooks = (ctx: EventHookContext) => {
         const wing = getProjectScope(getProjectName(ctx.project), config.projectWingPrefix).wing
         const result = await executeAdapter(ctx.$, {
           mode: "mine_messages",
-          transcript: redactedTranscript,
+          transcript: sanitizedTranscript,
           wing,
           extract_mode: config.autoMineExtractMode,
           agent: DEFAULT_AGENT_NAME,
@@ -129,6 +149,13 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         if (result?.success === false) {
           const failed = markFailed(sessionId)
+          await recordAutosave({
+            sessionId,
+            outcome: "failed",
+            reason: toReason(event.type),
+            wing,
+            sourcePreview: snapshot.lastUserMessage,
+          })
           await writeLog("ERROR", LOG_MESSAGES.autosaveMiningFailed, {
             sessionId,
             retryCount: failed.retryCount,
@@ -138,6 +165,13 @@ export const eventHooks = (ctx: EventHookContext) => {
         }
 
         const completed = markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Saved)
+        await recordAutosave({
+          sessionId,
+          outcome: "saved",
+          reason: toReason(event.type),
+          wing,
+          sourcePreview: snapshot.lastUserMessage,
+        })
         await writeLog("INFO", LOG_MESSAGES.autosaveMinedSessionContext, {
           sessionId,
           reason: toReason(event.type),

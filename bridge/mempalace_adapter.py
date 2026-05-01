@@ -22,6 +22,10 @@ def write_result(result: dict) -> None:
     sys.stdout.buffer.flush()
 
 
+def write_utf8_text(path: Path, text: str) -> None:
+    path.write_bytes(text.encode("utf-8", errors="replace"))
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -60,7 +64,7 @@ def main() -> int:
             extract_mode = payload.get("extract_mode", "general")
             with tempfile.TemporaryDirectory(prefix="mempalace-autosave-") as tmpdir:
                 transcript_path = Path(tmpdir) / "session.txt"
-                transcript_path.write_text(payload["transcript"], encoding="utf-8")
+                write_utf8_text(transcript_path, payload["transcript"])
                 with redirect_stdout(StringIO()):
                     mine_convos(
                         convo_dir=tmpdir,

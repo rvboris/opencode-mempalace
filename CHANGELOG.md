@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and the project aims to follow Semantic 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-01
+
+### Added
+
+- `mempalace_status` tool for checking retrieval hit rate, autosave outcomes, memory previews, and cumulative counters so users can evaluate whether the plugin helps.
+- TUI HUD plugin rendering compact per-session memory stats in the OpenCode prompt area with color-coded indicators for skipped and failed autosaves.
+- Per-session status tracking: each session now records its own retrieval hits, autosave outcomes, and manual writes in a v2 status schema.
+
+### Fixed
+
+- Autosave transcript encoding in the Python bridge now uses explicit UTF-8 byte writes to avoid platform-specific encoding failures.
+
 ## [0.2.1] - 2026-04-24
 
 ### Fixed

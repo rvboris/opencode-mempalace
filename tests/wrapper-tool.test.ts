@@ -1,5 +1,9 @@
 import { describe, expect, it, mock } from "bun:test"
+import os from "node:os"
+import path from "node:path"
 import type { AdapterRequest } from "../plugin/lib/types"
+
+process.env.MEMPALACE_STATUS_FILE = path.join(os.tmpdir(), "mempalace-wrapper-tool-status.json")
 
 const createSchemaStub = () => ({
   optional: () => ({ default: () => ({}) }),
@@ -11,6 +15,7 @@ const mockTool = Object.assign(<T>(input: T) => input, {
     enum: (_values: readonly string[]) => createSchemaStub(),
     string: () => createSchemaStub(),
     number: () => createSchemaStub(),
+    boolean: () => createSchemaStub(),
   },
 })
 
@@ -22,16 +27,24 @@ const adapterCalls: AdapterRequest[] = []
 mock.module("../plugin/lib/adapter", () => ({
   executeAdapter: async (_shell: unknown, payload: AdapterRequest) => {
     adapterCalls.push(payload)
+    if (payload.mode === "search") {
+      return {
+        success: true,
+        results: [{ content: "Use Bun for builds and tests." }],
+      }
+    }
     return { success: true, payload }
   },
 }))
 
 const { mempalaceMemoryTool } = await import("../plugin/tools/mempalace-memory")
 const { resetConfig } = await import("../plugin/lib/config")
+const { readStatusState, resetStatusState } = await import("../plugin/lib/status")
 
 describe("mempalaceMemoryTool", () => {
   it("redacts private content on save", async () => {
     resetConfig()
+    await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
       project: { name: "Demo" },
@@ -50,6 +63,7 @@ describe("mempalaceMemoryTool", () => {
 
   it("routes search to the correct scoped wing", async () => {
     resetConfig()
+    await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
       project: { name: "Demo" },
@@ -63,10 +77,14 @@ describe("mempalaceMemoryTool", () => {
 
     expect(adapterCalls[0].mode).toBe("search")
     expect(adapterCalls[0].wing).toBe("wing_user_profile")
+    const status = await readStatusState()
+    expect(status.counters.retrievalSearches).toBe(1)
+    expect(status.counters.retrievalHits).toBe(1)
   })
 
   it("sanitizes invalid unicode surrogates in kg_add", async () => {
     resetConfig()
+    await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
       project: { name: "Demo" },

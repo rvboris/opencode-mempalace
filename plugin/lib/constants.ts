@@ -24,6 +24,7 @@ export const ENV_KEYS = {
   userWingPrefix: "MEMPALACE_USER_WING_PREFIX",
   projectWingPrefix: "MEMPALACE_PROJECT_WING_PREFIX",
   autosaveLogFile: "MEMPALACE_AUTOSAVE_LOG_FILE",
+  statusFile: "MEMPALACE_STATUS_FILE",
   adapterPython: "MEMPALACE_ADAPTER_PYTHON",
   adapterTimeoutMs: "MEMPALACE_ADAPTER_TIMEOUT_MS",
 } as const
@@ -34,6 +35,7 @@ export const DATE_ISO_SLICE = 10 as const
 
 export const SERVICE_NAME = "mempalace-autosave" as const
 export const LOG_FILE_NAME = "opencode_autosave.log" as const
+export const STATUS_FILE_NAME = "opencode_status.json" as const
 
 export const DIRECT_MEMPALACE_MUTATION_TOOLS = [
   "mempalace_add_drawer",
@@ -48,6 +50,7 @@ export const COMPACTION_CONTEXT_MESSAGE = "MemPalace retrieval may be useful aft
 
 export const TOOL_DESCRIPTIONS = {
   mempalaceMemory: "Save or search memory in MemPalace with scope/privacy enforcement",
+  mempalaceStatus: "Show recent visible evidence that MemPalace retrieval or autosave helped",
 } as const
 
 export const TOOL_ERROR_MESSAGES = {
