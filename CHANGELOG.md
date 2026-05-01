@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on Keep a Changelog and the project aims to follow Semantic Versioning.
+The format is based on Keep a Changelog and versions are managed by `release-please` starting after `v0.3.0`.
 
 ## [Unreleased]
 

@@ -1,31 +1,62 @@
 # Contributing
 
-## Changelog
+## Commit Convention
 
-Update `CHANGELOG.md` in the same branch as the code change when the behavior is user-visible, operationally important, or affects release notes.
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) and [Release Please](https://github.com/googleapis/release-please) for automated releases.
 
-### What to include
+### Format
 
-- Write for users and maintainers, not as a raw git diff.
-- Record only notable changes: new features, behavior changes, important fixes, removals, or security-impacting updates.
-- Prefer one short bullet per change with enough context to explain why it matters.
-- Group entries under these sections when relevant: `Added`, `Changed`, `Fixed`, `Removed`, `Security`.
+```
+<type>: <description>
+
+[optional body]
+```
+
+### Types
+
+| Type | Bump | Description |
+|---|---|---|
+| `feat:` | minor | New user-visible feature |
+| `fix:` | patch | Bug fix |
+| `feat!:` or `fix!:` | major | Breaking change |
+| `docs:` | none | Documentation only |
+| `chore:` | none | Maintenance, tooling, CI |
+| `refactor:` | none | Code restructuring with no behavior change |
+| `test:` | none | Test additions or changes |
+| `ci:` | none | CI/CD changes |
+
+### Examples
+
+- `feat: add per-session status tracking to mempalace_status`
+- `fix: restore adapter stdout handling after mempalace update`
+- `docs: update README with TUI HUD setup instructions`
+- `chore: bump biome to 2.4`
+
+## Release Process
+
+Releases are fully automated via Release Please:
+
+1. Push conventional commits to `main`.
+2. Release Please opens or updates a Release PR with version bump and changelog.
+3. CI tests the Release PR automatically.
+4. Merge the Release PR to trigger:
+   - GitHub Release creation
+   - npm publish
+
+### What gets into the changelog
+
+Release Please extracts changelog entries from commit messages:
+
+- `feat:` and `fix:` commits appear in the release notes.
+- `chore:`, `docs:`, `refactor:`, `test:`, `ci:` are excluded.
+- Breaking changes (`!`) are highlighted.
 
 ### What to skip
 
-- Pure refactors with no visible effect.
-- Test-only changes unless they cover a regression users should know about.
-- Formatting, renames, or internal churn that does not change behavior.
+- Non-descriptive commit messages (`update files`, `wip`).
+- Mixing unrelated changes in a single commit.
+- Direct commits to `main` without conventional format (they won't trigger releases).
 
-### Workflow
+## Manual Changelog
 
-- Add new entries under `## [Unreleased]`.
-- Keep related bullets grouped and deduplicated before merging.
-- On release, move the `Unreleased` items into a new versioned section with the release date.
-- Keep wording concise and consistent across English and Russian user-facing docs when both are updated.
-
-### Style examples
-
-- Good: `Added adapter timeout handling for autosave writes to avoid stuck background saves.`
-- Good: `Fixed private blocks being included in autosave payloads.`
-- Avoid: `Updated files and cleaned code.`
+The `CHANGELOG.md` is managed by Release Please starting from `v0.3.0`. Do not edit it manually.
