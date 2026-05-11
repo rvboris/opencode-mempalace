@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and versions are managed by `release-please` starting after `v0.3.0`.
 
+## [0.4.0](https://github.com/rvboris/opencode-mempalace/compare/opencode-mempalace-v0.3.0...opencode-mempalace-v0.4.0) (2026-05-11)
+
+
+### Features
+
+* make memory retrieval visible to users ([63a72d4](https://github.com/rvboris/opencode-mempalace/commit/63a72d41cf867358181692e147575ad699d9642a))
+
+
+### Bug Fixes
+
+* resolve lint warning and ci coverage report compatibility ([5852081](https://github.com/rvboris/opencode-mempalace/commit/585208177f3e427495b75a833b15a1e4168b7253))
+
 ## [Unreleased]
 
 ## [0.3.0] - 2026-05-01
