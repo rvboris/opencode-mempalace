@@ -79,6 +79,7 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
+    expect(JSON.parse(result as string)._retrieval_summary).toBeDefined()
     expect(adapterCalls[0].mode).toBe("search")
     expect(adapterCalls[0].wing).toBe("wing_user_profile")
     const status = await readStatusState()
