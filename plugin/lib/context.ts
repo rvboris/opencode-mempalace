@@ -27,7 +27,7 @@ export const buildRetrievalInstruction = ({
     `Search user memory in wing ${user.wing} across rooms ${user.rooms.join(", ")}.`,
     `Search project memory in wing ${project.wing} across rooms ${project.rooms.join(", ")}.`,
     `Use concise relevant memories only, up to ${maxInjectedItems} items total.`,
-    INSTRUCTION_TEXT.doNotMentionToUser,
+    INSTRUCTION_TEXT.retrievalVisibilityHint,
   ].join(" ")
 }
 

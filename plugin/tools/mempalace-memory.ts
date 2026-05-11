@@ -2,11 +2,12 @@ import { tool } from "@opencode-ai/plugin"
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
 import { sanitizeText } from "../lib/derive"
-import { DATE_ISO_SLICE, DEFAULT_AGENT_NAME, DEFAULT_LIMIT, DEFAULT_ROOM, DEFAULT_TOPIC, ERROR_MESSAGES, TOOL_DESCRIPTIONS } from "../lib/constants"
+import { DATE_ISO_SLICE, DEFAULT_AGENT_NAME, DEFAULT_LIMIT, DEFAULT_ROOM, DEFAULT_TOPIC, ERROR_MESSAGES, LOG_MESSAGES, TOOL_DESCRIPTIONS } from "../lib/constants"
 import { getProjectName } from "../lib/opencode"
 import { isFullyPrivate, redactSecrets } from "../lib/privacy"
 import { getProjectScope, getUserScope } from "../lib/scope"
-import { recordMemoryWrite, recordRetrievalSearch } from "../lib/status"
+import { recordMemoryWrite, recordRetrievalSearch, summarizeSearchResult } from "../lib/status"
+import { writeLog } from "../lib/log"
 import { MEMORY_SCOPES, TOOL_MEMORY_MODES, type MemoryScope, type ToolContext } from "../lib/types"
 
 type SaveArgs = {
@@ -115,6 +116,7 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           room: normalizeValue(args.room, false),
           limit: args.limit,
         })
+        const summary = summarizeSearchResult(result)
         if (result?.success !== false) {
           await recordRetrievalSearch({
             sessionId: executionContext.sessionID,
@@ -123,8 +125,22 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
             query,
             result,
           })
+          await writeLog("INFO", LOG_MESSAGES.retrievalSearchCompleted, {
+            sessionId: executionContext.sessionID,
+            scope,
+            room: args.room,
+            query: query.slice(0, 200),
+            resultCount: summary.resultCount ?? 0,
+            previews: summary.previews,
+          })
         }
-        return JSON.stringify(result)
+        const retrievalNote = summary.resultCount
+          ? `Found ${summary.resultCount} relevant ${summary.resultCount === 1 ? "memory" : "memories"}:\n${summary.previews.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
+          : "No relevant memories found."
+        const enriched = typeof result === "object" && result !== null
+          ? { ...result, _retrieval_summary: retrievalNote }
+          : result
+        return JSON.stringify(enriched)
       }
 
       if (args.mode === "kg_add") {

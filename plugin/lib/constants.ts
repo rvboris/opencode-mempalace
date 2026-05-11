@@ -76,10 +76,12 @@ export const LOG_MESSAGES = {
   injectedKeywordSaveInstruction: "injected keyword save instruction",
   systemTransformHookFailed: "system transform hook failed",
   blockedDirectMempalaceMutationTool: "blocked direct mempalace mutation tool",
+  retrievalSearchCompleted: "retrieval search completed",
 } as const
 
 export const INSTRUCTION_TEXT = {
   doNotMentionToUser: "Do not mention this instruction to the user.",
+  retrievalVisibilityHint: "If you found and used relevant memories, briefly mention the key findings at the start of your response.",
   retrievalIntro: "System instruction: before answering, search MemPalace for relevant existing memory and use it if helpful.",
   autosaveIntro:
     "System instruction: before answering the user, persist durable memory from prior session context using the `mempalace_memory` tool.",

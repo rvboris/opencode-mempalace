@@ -11,7 +11,7 @@ export const mempalaceStatusTool = () =>
   tool({
     description: TOOL_DESCRIPTIONS.mempalaceStatus,
     args: {
-      verbose: tool.schema.boolean().optional().default(false),
+      verbose: tool.schema.boolean().optional().default(true),
       compact: tool.schema.boolean().optional().default(false),
     },
     async execute(args: StatusArgs, executionContext: { sessionID?: string }) {

@@ -37,6 +37,10 @@ mock.module("../plugin/lib/adapter", () => ({
   },
 }))
 
+mock.module("../plugin/lib/log", () => ({
+  writeLog: async () => {},
+}))
+
 const { mempalaceMemoryTool } = await import("../plugin/tools/mempalace-memory")
 const { resetConfig } = await import("../plugin/lib/config")
 const { readStatusState, resetStatusState } = await import("../plugin/lib/status")
@@ -70,7 +74,7 @@ describe("mempalaceMemoryTool", () => {
       $: async () => {},
     })
 
-    await toolDef.execute(
+    const result = await toolDef.execute(
       { mode: "search", scope: "user", query: "prefs", room: "workflow", content: undefined },
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
@@ -80,6 +84,25 @@ describe("mempalaceMemoryTool", () => {
     const status = await readStatusState()
     expect(status.counters.retrievalSearches).toBe(1)
     expect(status.counters.retrievalHits).toBe(1)
+  })
+
+  it("includes retrieval summary in search response", async () => {
+    resetConfig()
+    await resetStatusState()
+    adapterCalls.length = 0
+    const toolDef = mempalaceMemoryTool({
+      project: { name: "Demo" },
+      $: async () => {},
+    })
+
+    const result = await toolDef.execute(
+      { mode: "search", scope: "project", query: "build", room: "workflow", content: undefined },
+      { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
+    )
+
+    const parsed = JSON.parse(result as string)
+    expect(parsed._retrieval_summary).toContain("Found 1 relevant memory")
+    expect(parsed._retrieval_summary).toContain("Use Bun for builds and tests.")
   })
 
   it("sanitizes invalid unicode surrogates in kg_add", async () => {
