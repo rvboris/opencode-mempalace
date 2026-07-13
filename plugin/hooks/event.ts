@@ -1,6 +1,7 @@
 import {
   AutosaveReason,
   AutosaveStatus,
+  buildAutosaveMiningTranscript,
   buildMessageSnapshot,
   getMessageSnapshot,
   getSessionState,
@@ -14,11 +15,11 @@ import {
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
 import { COMPACTION_CONTEXT_MESSAGE, DEFAULT_AGENT_NAME, LOG_MESSAGES } from "../lib/constants"
-import { sanitizeText } from "../lib/derive"
+import { sanitizeText, stripJudgeTag, parseJudgeTag } from "../lib/derive"
 import { getProjectName, loadSessionMessages } from "../lib/opencode"
 import { redactSecrets } from "../lib/privacy"
 import { getProjectScope } from "../lib/scope"
-import { recordAutosave } from "../lib/status"
+import { recordAutosave, recordRetrievalJudge } from "../lib/status"
 import { writeLog } from "../lib/log"
 import { SESSION_EVENT_TYPES, type EventHookContext, type SessionEvent, type SessionEventType } from "../lib/types"
 
@@ -79,6 +80,18 @@ export const eventHooks = (ctx: EventHookContext) => {
 
         if (!isAutosaveTriggerEventType(event.type)) return
 
+        // Parse judge tag from last assistant message before anything else.
+        // Only when a retrieval happened this turn (retrievalPending was set).
+        const state = getSessionState(sessionId)
+        if (state.retrievalPending) {
+          const snapshot = getMessageSnapshot(sessionId)
+          if (snapshot) {
+            const verdict = (parseJudgeTag(snapshot.transcript) ?? "unknown") as
+              | "none" | "cited" | "improved" | "saved-time" | "unknown"
+            await recordRetrievalJudge({ sessionId, verdict })
+          }
+        }
+
         await writeLog("INFO", LOG_MESSAGES.autosaveTriggerReceived, {
           eventType: event.type,
           sessionId,
@@ -125,8 +138,9 @@ export const eventHooks = (ctx: EventHookContext) => {
           return
         }
 
-        const sanitizedTranscript = sanitizeText(redactSecrets(transcript))
-        if (!sanitizedTranscript.trim()) {
+        const sanitizedTranscript = sanitizeText(redactSecrets(stripJudgeTag(transcript)))
+        const miningTranscript = buildAutosaveMiningTranscript(sanitizedTranscript)
+        if (!miningTranscript) {
           markAutosaveComplete(sessionId, userDigest, transcriptDigest, AutosaveStatus.Noop)
           await recordAutosave({
             sessionId,
@@ -141,7 +155,7 @@ export const eventHooks = (ctx: EventHookContext) => {
         const wing = getProjectScope(getProjectName(ctx.project), config.projectWingPrefix).wing
         const result = await executeAdapter(ctx.$, {
           mode: "mine_messages",
-          transcript: sanitizedTranscript,
+          transcript: miningTranscript,
           wing,
           extract_mode: config.autoMineExtractMode,
           agent: DEFAULT_AGENT_NAME,

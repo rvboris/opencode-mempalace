@@ -65,11 +65,21 @@ export const USER_MEMORY_ROOMS = ["preferences", "workflow", "communication"] as
 export const PROJECT_MEMORY_ROOMS = ["architecture", "workflow", "decisions", "bugs", "setup"] as const
 export type KnownMemoryRoom = (typeof USER_MEMORY_ROOMS)[number] | (typeof PROJECT_MEMORY_ROOMS)[number]
 
-export const TOOL_MEMORY_MODES = ["save", "search", "kg_add", "diary_write"] as const
+export const TOOL_MEMORY_MODES = ["save", "search", "kg_add", "diary_write", "delete", "delete_by_source", "kg_query", "diary_read", "checkpoint"] as const
 export type ToolMemoryMode = (typeof TOOL_MEMORY_MODES)[number]
 
-export const ADAPTER_MODES = ["save", "search", "kg_add", "diary_write", "mine_messages"] as const
+export const ADAPTER_MODES = ["save", "search", "kg_add", "diary_write", "mine_messages", "delete", "delete_by_source", "kg_query", "diary_read", "checkpoint"] as const
 export type AdapterMode = (typeof ADAPTER_MODES)[number]
+
+export type RetrievalVerdict = "none" | "cited" | "improved" | "saved-time" | "unknown"
+
+export type RetrievalJudgeCounters = {
+  none: number
+  cited: number
+  improved: number
+  savedTime: number
+  unknown: number
+}
 
 export const SESSION_EVENT_TYPES = [
   "session.idle",
@@ -131,6 +141,7 @@ export type SearchAdapterRequest = {
   wing: string
   room?: string
   limit?: number
+  source_file?: string
 }
 
 export type KgAddAdapterRequest = {
@@ -155,6 +166,52 @@ export type MineMessagesAdapterRequest = {
   wing: string
   extract_mode: string
   agent: string
+  palace_path?: string
+}
+
+export type DeleteAdapterRequest = {
+  mode: "delete"
+  drawer_id: string
+}
+
+export type DeleteBySourceAdapterRequest = {
+  mode: "delete_by_source"
+  source_file: string
+  dry_run: boolean
+}
+
+export type KgQueryAdapterRequest = {
+  mode: "kg_query"
+  entity: string
+  as_of?: string
+  direction?: string
+}
+
+export type DiaryReadAdapterRequest = {
+  mode: "diary_read"
+  agent_name?: string
+  last_n?: number
+  wing?: string
+}
+
+export type CheckpointItem = {
+  wing: string
+  room: string
+  content: string
+}
+
+export type CheckpointDiary = {
+  agent_name?: string
+  entry: string
+  topic?: string
+  wing?: string
+}
+
+export type CheckpointAdapterRequest = {
+  mode: "checkpoint"
+  items: CheckpointItem[]
+  diary?: CheckpointDiary
+  dedup_threshold?: number
 }
 
 export type AdapterRequest =
@@ -163,6 +220,11 @@ export type AdapterRequest =
   | KgAddAdapterRequest
   | DiaryWriteAdapterRequest
   | MineMessagesAdapterRequest
+  | DeleteAdapterRequest
+  | DeleteBySourceAdapterRequest
+  | KgQueryAdapterRequest
+  | DiaryReadAdapterRequest
+  | CheckpointAdapterRequest
 
 export type AdapterResponse = {
   success?: boolean

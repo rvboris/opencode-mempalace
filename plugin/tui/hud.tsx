@@ -9,7 +9,7 @@ const EMPTY_STATE: StatusState = {
   counters: {
     retrievalPrompts: 0,
     retrievalSearches: 0,
-    retrievalHits: 0,
+    retrievalJudge: { none: 0, cited: 0, improved: 0, savedTime: 0, unknown: 0 },
     autosavesCompleted: 0,
     autosavesSkipped: 0,
     autosavesFailed: 0,

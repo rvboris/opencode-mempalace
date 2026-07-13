@@ -37,6 +37,7 @@ def main() -> int:
                 limit=payload.get("limit", 5),
                 wing=payload.get("wing"),
                 room=payload.get("room"),
+                source_file=payload.get("source_file"),
             )
         elif mode == "save":
             result = mcp_server.tool_add_drawer(
@@ -78,6 +79,31 @@ def main() -> int:
                 "mode": "mine_messages",
                 "wing": payload.get("wing"),
             }
+        elif mode == "delete":
+            result = mcp_server.tool_delete_drawer(drawer_id=payload["drawer_id"])
+        elif mode == "delete_by_source":
+            result = mcp_server.tool_delete_by_source(
+                source_file=payload["source_file"],
+                dry_run=payload.get("dry_run", True),
+            )
+        elif mode == "kg_query":
+            result = mcp_server.tool_kg_query(
+                entity=payload["entity"],
+                as_of=payload.get("as_of"),
+                direction=payload.get("direction", "both"),
+            )
+        elif mode == "diary_read":
+            result = mcp_server.tool_diary_read(
+                agent_name=payload.get("agent_name", "opencode"),
+                last_n=payload.get("last_n", 10),
+                wing=payload.get("wing", ""),
+            )
+        elif mode == "checkpoint":
+            result = mcp_server.tool_checkpoint(
+                items=payload["items"],
+                diary=payload.get("diary"),
+                dedup_threshold=payload.get("dedup_threshold", 0.9),
+            )
         else:
             result = {"success": False, "error": f"Unknown mode: {mode}"}
     except Exception as error:

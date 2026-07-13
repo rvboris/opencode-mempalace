@@ -1,6 +1,6 @@
 {
   "name": "@rvboris/opencode-mempalace",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "OpenCode plugin for hidden MemPalace retrieval and autosave via a local Python adapter.",
   "type": "module",
   "main": "dist/plugin/index.js",
@@ -57,8 +57,8 @@
     "lint": "biome lint plugin tests scripts package.json tsconfig.json example-opencode.json biome.json",
     "lint:ci": "biome lint plugin tests scripts package.json tsconfig.json example-opencode.json biome.json",
     "prepublishOnly": "npm run build",
-    "test": "bun test",
-    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "test": "bun test --parallel",
+    "test:coverage": "bun test --parallel --coverage --coverage-reporter=text --coverage-reporter=lcov",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "publishConfig": {

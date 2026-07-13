@@ -28,21 +28,7 @@ export const buildRetrievalInstruction = ({
     `Search project memory in wing ${project.wing} across rooms ${project.rooms.join(", ")}.`,
     `Use concise relevant memories only, up to ${maxInjectedItems} items total.`,
     INSTRUCTION_TEXT.retrievalVisibilityHint,
-  ].join(" ")
-}
-
-export const buildAutosaveInstruction = (reason: string) => {
-  return [
-    INSTRUCTION_TEXT.autosaveIntro,
-    INSTRUCTION_TEXT.avoidRawMutationTools,
-    `Trigger reason: ${reason}.`,
-    INSTRUCTION_TEXT.saveStableFacts,
-    INSTRUCTION_TEXT.preferConciseStructuredMemories,
-    INSTRUCTION_TEXT.userScopeHint,
-    INSTRUCTION_TEXT.projectScopeHint,
-    INSTRUCTION_TEXT.avoidFullTranscript,
-    INSTRUCTION_TEXT.applyPrivacyRedaction,
-    INSTRUCTION_TEXT.doNotMentionToUser,
+    INSTRUCTION_TEXT.judgeInstruction,
   ].join(" ")
 }
 

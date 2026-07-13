@@ -9,6 +9,7 @@ const {
   readStatusState,
   recordAutosave,
   recordMemoryWrite,
+  recordRetrievalJudge,
   recordRetrievalSearch,
   resetStatusState,
 } = await import("../plugin/lib/status")
@@ -23,11 +24,7 @@ describe("formatSessionHud", () => {
       query: "deploy docs",
       result: { success: true, results: [{ content: "Deploy with bun run build" }] },
     })
-    await recordAutosave({
-      sessionId: "hud-1",
-      outcome: "saved",
-      reason: "idle",
-    })
+    await recordRetrievalJudge({ sessionId: "hud-1", verdict: "improved" })
     await recordMemoryWrite({
       sessionId: "hud-1",
       mode: "save",
@@ -35,17 +32,22 @@ describe("formatSessionHud", () => {
       room: "workflow",
       preview: "Deploy docs live in README.",
     })
+    await recordAutosave({
+      sessionId: "hud-1",
+      outcome: "saved",
+      reason: "idle",
+    })
 
     const state = await readStatusState()
 
-    expect(formatSessionHud(state, "hud-1")).toBe("MEM hits 1 · saved 1 · failed 0 · writes 1")
+    expect(formatSessionHud(state, "hud-1")).toBe("MEM helps 1")
   })
 
   it("falls back cleanly when a session has no tracked memory activity", async () => {
     await resetStatusState()
     const state = await readStatusState()
 
-    expect(formatSessionHud(state, "hud-empty")).toBe("MEM no activity yet")
+    expect(formatSessionHud(state, "hud-empty")).toBe("MEM quiet")
   })
 
   it("marks skipped autosaves explicitly", async () => {
@@ -58,7 +60,52 @@ describe("formatSessionHud", () => {
 
     const state = await readStatusState()
 
-    expect(formatSessionHud(state, "hud-skipped")).toBe("MEM SKIPPED · hits 0 · saved 0 · failed 0 · skipped 1")
+    expect(formatSessionHud(state, "hud-skipped")).toBe("MEM quiet · skip 1")
+  })
+
+  it("shows retrieval hits before a judge verdict", async () => {
+    await resetStatusState()
+    await recordRetrievalSearch({
+      sessionId: "hud-found",
+      scope: "project",
+      room: "workflow",
+      query: "deploy docs",
+      result: { success: true, results: [{ content: "Deploy with bun run build" }, { content: "Use bun test" }] },
+    })
+
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-found")).toBe("MEM found 2")
+  })
+
+  it("shows no hits before a judge verdict", async () => {
+    await resetStatusState()
+    await recordRetrievalSearch({
+      sessionId: "hud-no-hits",
+      scope: "project",
+      room: "workflow",
+      query: "missing docs",
+      result: { success: true, results: [] },
+    })
+
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-no-hits")).toBe("MEM no hits")
+  })
+
+  it("shows searched when retrieval count is unavailable", async () => {
+    await resetStatusState()
+    await recordRetrievalSearch({
+      sessionId: "hud-searched",
+      scope: "project",
+      room: "workflow",
+      query: "adapter summary",
+      result: { success: true },
+    })
+
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-searched")).toBe("MEM searched")
   })
 
   it("marks failed autosaves explicitly", async () => {
@@ -71,6 +118,33 @@ describe("formatSessionHud", () => {
 
     const state = await readStatusState()
 
-    expect(formatSessionHud(state, "hud-failed")).toBe("MEM FAILED · hits 0 · saved 0 · failed 1")
+    expect(formatSessionHud(state, "hud-failed")).toBe("MEM quiet · fail 1")
+  })
+
+  it("cited only shows citation", async () => {
+    await resetStatusState()
+    await recordRetrievalJudge({ sessionId: "hud-cited", verdict: "cited" })
+    await recordRetrievalJudge({ sessionId: "hud-cited", verdict: "cited" })
+
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-cited")).toBe("MEM cited 2")
+  })
+
+  it("judged but none helped says no help", async () => {
+    await resetStatusState()
+    await recordRetrievalJudge({ sessionId: "hud-none", verdict: "none" })
+    await recordRetrievalJudge({ sessionId: "hud-none", verdict: "none" })
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-none")).toBe("MEM no help")
+  })
+
+  it("unknown verdicts show unknown", async () => {
+    await resetStatusState()
+    await recordRetrievalJudge({ sessionId: "hud-unk", verdict: "unknown" })
+    const state = await readStatusState()
+
+    expect(formatSessionHud(state, "hud-unk")).toBe("MEM unknown")
   })
 })

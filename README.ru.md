@@ -14,7 +14,7 @@
 
 ```
 Ты: "Какую систему сборки мы используем?"
-ИИ:  [ищет в памяти] → "Bun. Это решение приняли 10 апреля."
+ИИ:  [ищет в памяти] → "Bun. Этот проект использует Bun."
 ```
 
 ### Результат
@@ -43,6 +43,57 @@ mempalace init ~/.mempalace/palace
 
 Готово. Поиск по памяти, автосохранение и оба инструмента активны сразу.
 
+## Как это работает
+
+Плагин работает внутри OpenCode как набор хуков и тулов. Тонкий Python-мост вызывает локальный пакет `mempalace`, который хранит всё в ChromaDB с локальными эмбеддингами `embeddinggemma-300m` на устройстве. Без облака, без API-ключей.
+
+```mermaid
+flowchart TD
+    subgraph OC["OpenCode"]
+        U["Пользователь"]
+        M["ИИ-модель"]
+    end
+
+    subgraph PL["TypeScript-плагин (этот репо)"]
+        H1["system.transform хук — подставляет: сначала ищи в памяти"]
+        H2["event хук — автосохранение при простое / компактизации / закрытии"]
+        T["тулы mempalace_memory (9 режимов) + mempalace_status"]
+        HUD["TUI HUD — бейдж статистики сессии"]
+    end
+
+    subgraph BR["Python-мост"]
+        A["mempalace_adapter.py — запускается на каждый вызов"]
+    end
+
+    subgraph MP["пакет mempalace (локально)"]
+        SRV["mcp_server / convo_miner"]
+        DB[("ChromaDB")]
+        EMB["embeddinggemma-300m ONNX"]
+    end
+
+    SF[("opencode_status.json")]
+
+    U -->|"сообщение"| H1
+    H1 -->|"подсказка поиска"| M
+    M -->|"mempalace_memory search"| T
+    T --> A --> SRV --> EMB
+    SRV --> DB
+    A --> T --> M
+    M -->|"ответ с контекстом"| U
+    T -.->|"счётчики"| SF
+    HUD -.->|"читает"| SF
+    M -.->|"простой сессии"| H2
+    H2 -.->|"mine_messages"| A
+```
+
+**Поиск (retrieval)** — перед каждым ответом хук `system.transform` подталкивает модель сначала проверить память. Модель вызывает `mempalace_memory [search]`, мост прокидывает вызов в `mempalace`, результаты (векторный + BM25-поиск) возвращаются как контекст для ответа.
+
+**Автосохранение** — при простое сессии, компактизации или закрытии хук `event` анализирует транскрипт, извлекает устойчивые факты и сохраняет их в нужную область памяти через `mine_messages`. Счётчики пишутся в `opencode_status.json`, который читает TUI HUD.
+
+**Сохранение по ключевому слову** — когда пользователь говорит «запомни это» / «отметь», плагин активирует инструкцию сохранения, чтобы модель сразу сохранила факт через `mempalace_memory [save]`.
+
+Плагин обращается к `mempalace` через локальный Python-мост (`bridge/mempalace_adapter.py`), запускаемый на каждый вызов, — MCP-сервер MemPalace ему **не нужен**.
+
 ## Возможности
 
 ### Скрытый поиск
@@ -51,18 +102,27 @@ mempalace init ~/.mempalace/palace
 
 ### Фоновое автосохранение
 
-При простое сессии, компактизации или завершении — плагин анализирует транскрипт, извлекает устойчивые факты и сохраняет их в нужную область памяти.
+При простое сессии, компактизации или завершении — плагин анализирует транскрипт, извлекает устойчивые факты и сохраняет их в нужную область памяти. Низкосигнальные фрагменты фильтруются до майнинга, поэтому остатки вроде `re.`, `ls>` или почти одна пунктуация не становятся мусорной памятью.
+
+### Надёжный локальный мост
+
+Операции записи (`save`, автосохранение, diary, граф, checkpoints, удаления) проходят через очередь адаптера и повторяются при конфликте palace-lock (`held by PID`). Поиск выполняется без этой очереди.
 
 ### `mempalace_memory` — единый инструмент
 
-Четыре режима, один интерфейс:
+Девять режимов, один интерфейс:
 
 | Режим | Назначение |
 |---|---|
 | `save` | Сохранить предпочтение, факт или решение |
-| `search` | Найти релевантную память по запросу |
+| `search` | Найти релевантную память по запросу (опциональный фильтр `source_file`) |
 | `kg_add` | Добавить структурированный факт в граф знаний |
 | `diary_write` | Записать короткую рабочую заметку |
+| `checkpoint` | Пакетное сохранение нескольких записей + опциональной diary за один вызов |
+| `delete` | Удалить память по ID записи |
+| `delete_by_source` | Массовое удаление памяти по файлу-источнику (dry-run по умолчанию) |
+| `kg_query` | Поиск по графу знаний — связи сущности |
+| `diary_read` | Чтение недавних записей diary |
 
 Примеры:
 
@@ -76,6 +136,14 @@ mempalace_memory  mode: search  scope: project  room: decisions  query: сист
 
 ```text
 mempalace_memory  mode: kg_add  subject: my-repo  predicate: uses  object: bun
+```
+
+```text
+mempalace_memory  mode: checkpoint  items: [{"wing":"wing_user","room":"preferences","content":"любит тёмную тему"},{"wing":"wing_project","room":"decisions","content":"использует bun"}]
+```
+
+```text
+mempalace_memory  mode: delete_by_source  source_file: /data/import.jsonl  dry_run: true
 ```
 
 ### `mempalace_status` — видимое доказательство
@@ -93,10 +161,26 @@ mempalace_status
 Компактная строка статистики текущей сессии в области ввода OpenCode:
 
 ```
-MEM hits 3 · saved 2 · failed 0 · writes 1
+MEM helps 3
+MEM cited 2
+MEM found 5
+MEM no hits
+MEM searched
+MEM quiet
+MEM helps 1 · fail 1
 ```
 
-Цветовые индикаторы для `SKIPPED` и `FAILED`. Требует записи в `tui.json` (см. ниже).
+- `MEM helps N` — память улучшила ответ или сэкономила время (самые полезные вердикты)
+- `MEM cited N` — память была упомянута, но ответ не изменился
+- `MEM no help` — поиск был, но без эффекта
+- `MEM unknown` — модель не поставила тег с вердиктом
+- `MEM found N` — поиск вернул N записей, но judge-вердикт ещё не записан
+- `MEM no hits` — поиск был, но ничего не нашёл
+- `MEM searched` — поиск был, но количество результатов недоступно
+- `MEM quiet` — поиск по памяти ещё не выполнялся
+- `· fail N` / `· skip N` — показываются только при ошибках автосохранения
+
+HUD совмещает факт поиска и **judge-сигнал**. Когда модель сообщает `[memory: verdict]`, плагин парсит тег после хода и вырезает перед сохранением. Если вердикта нет, результаты поиска всё равно видны как `found`, `no hits` или `searched`. Требует записи в `tui.json` (см. ниже).
 
 ## Области памяти
 
@@ -154,7 +238,7 @@ MEM hits 3 · saved 2 · failed 0 · writes 1
 {
   "$schema": "https://opencode.ai/tui.json",
   "plugin": [
-    "file:///путь/до/mempalace-autosave/plugin/tui/index.tsx"
+    "file:///путь/до/opencode-mempalace/plugin/tui/index.tsx"
   ]
 }
 ```
@@ -168,21 +252,6 @@ MEM hits 3 · saved 2 · failed 0 · writes 1
 }
 ```
 
-## Как это работает
-
-```
-Сообщение пользователя
-  → системный хук подставляет «сначала проверь память»
-  → модель вызывает mempalace_memory [search]
-  → результаты влияют на ответ
-
-Сессия завершается / простаивает
-  → хук событий анализирует транскрипт
-  → Python-адаптер сохраняет устойчивые факты через MemPalace
-```
-
-Плагин использует локальную Python-прослойку (`bridge/mempalace_adapter.py`) для работы с MemPalace. Ему **не нужен** MCP-сервер MemPalace.
-
 ## Совместимость
 
 | Требование | Версия |
@@ -194,14 +263,14 @@ MEM hits 3 · saved 2 · failed 0 · writes 1
 
 ## Документация проекта
 
-- [Changelog](./CHANGELOG.md) — история изменений
+- [Changelog](./CHANGELOG.md) — заметки к релизам
 - [Contributing](./CONTRIBUTING.md) — правила ведения changelog
 
 ## Локальная разработка
 
 ```bash
 git clone https://github.com/rvboris/opencode-mempalace.git
-cd opencode-mempalace/mempalace-autosave
+cd opencode-mempalace
 npm install
 npm run build
 ```
@@ -210,7 +279,7 @@ npm run build
 
 ```jsonc
 {
-  "plugin": ["file:///ABSOLUTE/PATH/TO/mempalace-autosave/plugin/index.ts"]
+  "plugin": ["file:///ABSOLUTE/PATH/TO/opencode-mempalace/plugin/index.ts"]
 }
 ```
 

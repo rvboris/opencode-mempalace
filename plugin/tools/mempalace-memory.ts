@@ -23,6 +23,7 @@ type SearchArgs = {
   room?: string
   query?: string
   limit?: number
+  source_file?: string
 }
 
 type KgAddArgs = {
@@ -41,7 +42,52 @@ type DiaryWriteArgs = {
   agent_name?: string
 }
 
-type MemoryToolArgs = SaveArgs | SearchArgs | KgAddArgs | DiaryWriteArgs
+type DeleteArgs = {
+  mode: "delete"
+  scope?: MemoryScope
+  drawer_id?: string
+}
+
+type DeleteBySourceArgs = {
+  mode: "delete_by_source"
+  scope?: MemoryScope
+  source_file?: string
+  dry_run?: boolean
+}
+
+type KgQueryArgs = {
+  mode: "kg_query"
+  scope?: MemoryScope
+  entity?: string
+  as_of?: string
+  direction?: string
+}
+
+type DiaryReadArgs = {
+  mode: "diary_read"
+  scope?: MemoryScope
+  agent_name?: string
+  last_n?: number
+}
+
+type CheckpointArgs = {
+  mode: "checkpoint"
+  scope?: MemoryScope
+  items?: string
+  diary?: string
+  dedup_threshold?: number
+}
+
+type MemoryToolArgs =
+  | SaveArgs
+  | SearchArgs
+  | KgAddArgs
+  | DiaryWriteArgs
+  | DeleteArgs
+  | DeleteBySourceArgs
+  | KgQueryArgs
+  | DiaryReadArgs
+  | CheckpointArgs
 
 const getProjectWing = (projectName: string | undefined, prefix: string) => {
   return getProjectScope(projectName, prefix).wing
@@ -72,6 +118,16 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
       topic: tool.schema.string().optional().default(DEFAULT_TOPIC),
       agent_name: tool.schema.string().optional().default(DEFAULT_AGENT_NAME),
       limit: tool.schema.number().optional().default(DEFAULT_LIMIT),
+      source_file: tool.schema.string().optional(),
+      drawer_id: tool.schema.string().optional(),
+      entity: tool.schema.string().optional(),
+      as_of: tool.schema.string().optional(),
+      direction: tool.schema.enum(["outgoing", "incoming", "both"]).optional().default("both"),
+      dry_run: tool.schema.boolean().optional().default(true),
+      last_n: tool.schema.number().optional().default(10),
+      items: tool.schema.string().optional(),
+      diary: tool.schema.string().optional(),
+      dedup_threshold: tool.schema.number().optional().default(0.9),
     },
     async execute(args: MemoryToolArgs, executionContext: { sessionID?: string }) {
       const config = await loadConfig()
@@ -115,6 +171,7 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           wing,
           room: normalizeValue(args.room, false),
           limit: args.limit,
+          source_file: args.source_file,
         })
         const summary = summarizeSearchResult(result)
         if (result?.success !== false) {
@@ -169,6 +226,74 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
         return JSON.stringify(result)
       }
 
+      if (args.mode === "delete") {
+        if (!args.drawer_id) return JSON.stringify({ success: false, error: "drawer_id is required" })
+        const result = await executeAdapter(ctx.$, {
+          mode: "delete",
+          drawer_id: args.drawer_id,
+        })
+        return JSON.stringify(result)
+      }
+
+      if (args.mode === "delete_by_source") {
+        if (!args.source_file) return JSON.stringify({ success: false, error: "source_file is required" })
+        const result = await executeAdapter(ctx.$, {
+          mode: "delete_by_source",
+          source_file: args.source_file,
+          dry_run: args.dry_run ?? true,
+        })
+        return JSON.stringify(result)
+      }
+
+      if (args.mode === "kg_query") {
+        if (!args.entity) return JSON.stringify({ success: false, error: "entity is required" })
+        const result = await executeAdapter(ctx.$, {
+          mode: "kg_query",
+          entity: args.entity,
+          as_of: args.as_of,
+          direction: args.direction ?? "both",
+        })
+        return JSON.stringify(result)
+      }
+
+      if (args.mode === "diary_read") {
+        const result = await executeAdapter(ctx.$, {
+          mode: "diary_read",
+          agent_name: args.agent_name ?? DEFAULT_AGENT_NAME,
+          last_n: args.last_n ?? 10,
+          wing: scope === "user" ? getUserWing(config.userWingPrefix) : wing,
+        })
+        return JSON.stringify(result)
+      }
+
+      if (args.mode === "checkpoint") {
+        if (!args.items) return JSON.stringify({ success: false, error: "items (JSON array) is required" })
+        let parsedItems: Array<{ wing: string; room: string; content: string }>
+        let parsedDiary: { agent_name?: string; entry: string; topic?: string; wing?: string } | undefined
+        try {
+          parsedItems = JSON.parse(args.items)
+          if (args.diary) parsedDiary = JSON.parse(args.diary)
+        } catch {
+          return JSON.stringify({ success: false, error: "items/diary must be valid JSON" })
+        }
+        const result = await executeAdapter(ctx.$, {
+          mode: "checkpoint",
+          items: parsedItems,
+          diary: parsedDiary,
+          dedup_threshold: args.dedup_threshold ?? 0.9,
+        })
+        if (result?.success !== false) {
+          await recordMemoryWrite({
+            sessionId: executionContext.sessionID,
+            mode: "save",
+            scope,
+            preview: `checkpoint: ${parsedItems.length} items`,
+          })
+        }
+        return JSON.stringify(result)
+      }
+
+      // Default: diary_write (fallthrough for mode === "diary_write")
       const result = await executeAdapter(ctx.$, {
         mode: "diary_write",
         agent_name: normalizeValue(args.agent_name, false) ?? DEFAULT_AGENT_NAME,

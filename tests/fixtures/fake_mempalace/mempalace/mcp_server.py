@@ -20,7 +20,7 @@ def _restore_stdout():
     sys.stdout = _REAL_STDOUT
 
 
-def tool_search(query: str, limit: int = 5, wing: str = None, room: str = None, **_kwargs):
+def tool_search(query: str, limit: int = 5, wing: str = None, room: str = None, source_file: str = None, **_kwargs):
     return {
         "success": True,
         "mode": "search",
@@ -28,6 +28,7 @@ def tool_search(query: str, limit: int = 5, wing: str = None, room: str = None, 
         "wing": wing,
         "room": room,
         "limit": limit,
+        "source_file": source_file,
     }
 
 
@@ -41,3 +42,23 @@ def tool_kg_add(subject: str, predicate: str, object: str, **_kwargs):
 
 def tool_diary_write(agent_name: str, entry: str, topic: str = "autosave", **_kwargs):
     return {"success": True, "agent": agent_name, "entry": entry, "topic": topic}
+
+
+def tool_delete_drawer(drawer_id: str, **_kwargs):
+    return {"success": True, "deleted": drawer_id}
+
+
+def tool_delete_by_source(source_file: str, dry_run: bool = True, **_kwargs):
+    return {"success": True, "source_file": source_file, "dry_run": dry_run, "drawer_count": 0}
+
+
+def tool_kg_query(entity: str, as_of: str = None, direction: str = "both", **_kwargs):
+    return {"entity": entity, "as_of": as_of, "direction": direction, "facts": [], "count": 0}
+
+
+def tool_diary_read(agent_name: str, last_n: int = 10, wing: str = "", **_kwargs):
+    return {"agent_name": agent_name, "last_n": last_n, "wing": wing, "entries": []}
+
+
+def tool_checkpoint(items, diary=None, dedup_threshold=0.9, **_kwargs):
+    return {"added": [], "duplicates": [], "errors": [], "items_count": len(items)}

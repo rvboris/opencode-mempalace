@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 const {
   AutosaveStatus,
+  buildAutosaveMiningTranscript,
   buildTranscriptDigest,
   buildTranscriptText,
   buildUserDigest,
@@ -12,7 +13,6 @@ const {
   markRetrievalPending,
   shouldScheduleAutosave,
 } = await import("../plugin/lib/autosave")
-const { buildAutosaveInstruction } = await import("../plugin/lib/context")
 
 describe("autosave state", () => {
   it("schedules only once for same transcript progress", () => {
@@ -37,12 +37,6 @@ describe("autosave state", () => {
     state.lastFailureAt = Date.now() - 100000
 
     expect(shouldScheduleAutosave(sessionId, "user-x", "tx-x")).toBe(false)
-  })
-
-  it("builds autosave instruction without visible protocol markers", () => {
-    const instruction = buildAutosaveInstruction("idle")
-    expect(instruction).not.toContain("[mempalace-autosave]")
-    expect(instruction).not.toContain("<mempalace-autosave-ok")
   })
 
   it("extracts and sanitizes last user message", () => {
@@ -71,5 +65,22 @@ describe("autosave state", () => {
     ])
     expect(transcript).toContain("USER: Hello")
     expect(transcript).toContain("ASSISTANT: Hi")
+  })
+
+  it("drops tiny junk fragments from autosave mining transcript", () => {
+    const transcript = buildTranscriptText([
+      { role: "user", content: "re." },
+      { role: "assistant", content: "ls>" },
+      { role: "user", content: "fy. |" },
+    ])
+    expect(buildAutosaveMiningTranscript(transcript)).toBe("")
+  })
+
+  it("keeps short useful lines when transcript has enough combined signal", () => {
+    const transcript = buildTranscriptText([
+      { role: "user", content: "fix auth" },
+      { role: "assistant", content: "done" },
+    ])
+    expect(buildAutosaveMiningTranscript(transcript)).toContain("USER: fix auth")
   })
 })

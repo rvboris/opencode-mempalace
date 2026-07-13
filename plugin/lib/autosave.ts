@@ -216,6 +216,34 @@ export const shouldScheduleAutosave = (
   return true
 }
 
+const countSignal = (text: string) => {
+  const tokens = text.match(/[\p{L}\p{N}][\p{L}\p{N}_'-]*/gu) ?? []
+  const alnum = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0
+  return { alnum, tokens: tokens.length }
+}
+
+const stripTranscriptRole = (block: string) => block.replace(/^[A-Z_]+:\s*/, "")
+
+const hasLineSignal = (text: string) => {
+  const signal = countSignal(text)
+  return signal.alnum >= 3
+}
+
+const hasCombinedAutosaveSignal = (text: string) => {
+  const signal = countSignal(text)
+  return signal.alnum >= 5 && signal.tokens >= 2
+}
+
+export const buildAutosaveMiningTranscript = (transcript: string) => {
+  const blocks = transcript
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block && hasLineSignal(stripTranscriptRole(block)))
+  const filtered = blocks.join("\n\n").trim()
+  const combinedText = blocks.map(stripTranscriptRole).join("\n")
+  return hasCombinedAutosaveSignal(combinedText) ? filtered : ""
+}
+
 export const buildTranscriptText = (messages: readonly MessageLike[] | null | undefined) => {
   const lines: string[] = []
   for (const message of messages ?? []) {

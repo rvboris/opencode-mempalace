@@ -2,12 +2,20 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { ENV_KEYS, STATUS_FILE_NAME } from "./constants"
-import type { AdapterResponse, MemoryScope } from "./types"
+import type { AdapterResponse, MemoryScope, RetrievalVerdict } from "./types"
+
+const DEFAULT_JUDGE_COUNTERS = () => ({
+  none: 0,
+  cited: 0,
+  improved: 0,
+  savedTime: 0,
+  unknown: 0,
+})
 
 export type StatusCounters = {
   retrievalPrompts: number
   retrievalSearches: number
-  retrievalHits: number
+  retrievalJudge: ReturnType<typeof DEFAULT_JUDGE_COUNTERS>
   autosavesCompleted: number
   autosavesSkipped: number
   autosavesFailed: number
@@ -16,7 +24,7 @@ export type StatusCounters = {
 
 export type StatusSessionCounters = {
   retrievalSearches: number
-  retrievalHits: number
+  retrievalJudge: ReturnType<typeof DEFAULT_JUDGE_COUNTERS>
   autosavesCompleted: number
   autosavesSkipped: number
   autosavesFailed: number
@@ -90,7 +98,7 @@ const MAX_PREVIEW_LENGTH = 140
 
 const DEFAULT_SESSION_COUNTERS = (): StatusSessionCounters => ({
   retrievalSearches: 0,
-  retrievalHits: 0,
+  retrievalJudge: DEFAULT_JUDGE_COUNTERS(),
   autosavesCompleted: 0,
   autosavesSkipped: 0,
   autosavesFailed: 0,
@@ -108,7 +116,7 @@ const DEFAULT_STATE = (): StatusState => ({
   counters: {
     retrievalPrompts: 0,
     retrievalSearches: 0,
-    retrievalHits: 0,
+    retrievalJudge: DEFAULT_JUDGE_COUNTERS(),
     autosavesCompleted: 0,
     autosavesSkipped: 0,
     autosavesFailed: 0,
@@ -146,6 +154,15 @@ const readStringArray = (value: unknown) => {
   return value.map((item) => normalizeString(item)).filter((item): item is string => Boolean(item))
 }
 
+const readJudgeCounters = (value: unknown) => {
+  const input = isRecord(value) ? value : {}
+  const rc = (key: string) => {
+    const item = input[key]
+    return typeof item === "number" && Number.isFinite(item) && item >= 0 ? Math.floor(item) : 0
+  }
+  return { none: rc("none"), cited: rc("cited"), improved: rc("improved"), savedTime: rc("savedTime"), unknown: rc("unknown") }
+}
+
 const readCounters = (value: unknown): StatusCounters => {
   const input = isRecord(value) ? value : {}
   const readCount = (key: keyof StatusCounters) => {
@@ -155,7 +172,7 @@ const readCounters = (value: unknown): StatusCounters => {
   return {
     retrievalPrompts: readCount("retrievalPrompts"),
     retrievalSearches: readCount("retrievalSearches"),
-    retrievalHits: readCount("retrievalHits"),
+    retrievalJudge: readJudgeCounters(input.retrievalJudge),
     autosavesCompleted: readCount("autosavesCompleted"),
     autosavesSkipped: readCount("autosavesSkipped"),
     autosavesFailed: readCount("autosavesFailed"),
@@ -171,7 +188,7 @@ const readSessionCounters = (value: unknown): StatusSessionCounters => {
   }
   return {
     retrievalSearches: readCount("retrievalSearches"),
-    retrievalHits: readCount("retrievalHits"),
+    retrievalJudge: readJudgeCounters(input.retrievalJudge),
     autosavesCompleted: readCount("autosavesCompleted"),
     autosavesSkipped: readCount("autosavesSkipped"),
     autosavesFailed: readCount("autosavesFailed"),
@@ -401,10 +418,6 @@ export const recordRetrievalSearch = async (input: {
   const summary = summarizeSearchResult(input.result)
   await updateState((state) => {
     state.counters.retrievalSearches += 1
-    if ((summary.resultCount ?? 0) > 0) {
-      state.counters.retrievalHits += 1
-      addHelpedSession(state, input.sessionId)
-    }
     state.lastRetrieval = {
       sessionId: input.sessionId,
       timestamp: new Date().toISOString(),
@@ -416,10 +429,20 @@ export const recordRetrievalSearch = async (input: {
     }
     updateSessionState(state, input.sessionId, (sessionState) => {
       sessionState.counters.retrievalSearches += 1
-      if ((summary.resultCount ?? 0) > 0) {
-        sessionState.counters.retrievalHits += 1
-      }
       sessionState.lastRetrieval = state.lastRetrieval
+    })
+  })
+}
+
+export const recordRetrievalJudge = async (input: { sessionId?: string; verdict: RetrievalVerdict }) => {
+  await updateState((state) => {
+    const key = input.verdict === "saved-time" ? "savedTime" : input.verdict
+    state.counters.retrievalJudge[key] += 1
+    if (input.verdict === "improved" || input.verdict === "saved-time") {
+      addHelpedSession(state, input.sessionId)
+    }
+    updateSessionState(state, input.sessionId, (sessionState) => {
+      sessionState.counters.retrievalJudge[key] += 1
     })
   })
 }
@@ -495,29 +518,45 @@ const isCurrentSession = (expectedSessionId: string | undefined, actualSessionId
 
 export const formatSessionHud = (state: StatusState, sessionId: string) => {
   const sessionState = state.sessions[sessionId]
-  if (!sessionState) return "MEM no activity yet"
+  if (!sessionState) return "MEM quiet"
 
-  const parts = [
-    `hits ${sessionState.counters.retrievalHits}`,
-    `saved ${sessionState.counters.autosavesCompleted}`,
-    `failed ${sessionState.counters.autosavesFailed}`,
-  ]
+  const j = sessionState.counters.retrievalJudge
+  const helps = j.improved + j.savedTime
+  const judged = j.none + j.cited + j.improved + j.savedTime
 
+  let label: string
+  if (helps > 0) {
+    label = `MEM helps ${helps}`
+  } else if (j.cited > 0) {
+    label = `MEM cited ${j.cited}`
+  } else if (judged > 0) {
+    label = "MEM no help"
+  } else if (j.unknown > 0) {
+    label = "MEM unknown"
+  } else if (sessionState.lastRetrieval) {
+    const count = sessionState.lastRetrieval.resultCount
+    if (count && count > 0) {
+      label = `MEM found ${count}`
+    } else if (count === 0) {
+      label = "MEM no hits"
+    } else {
+      label = "MEM searched"
+    }
+  } else if (sessionState.counters.retrievalSearches > 0) {
+    label = "MEM searched"
+  } else {
+    label = "MEM quiet"
+  }
+
+  const flags: string[] = []
+  if (sessionState.counters.autosavesFailed > 0) {
+    flags.push(`fail ${sessionState.counters.autosavesFailed}`)
+  }
   if (sessionState.counters.autosavesSkipped > 0) {
-    parts.push(`skipped ${sessionState.counters.autosavesSkipped}`)
-  }
-  if (sessionState.counters.manualWrites > 0) {
-    parts.push(`writes ${sessionState.counters.manualWrites}`)
+    flags.push(`skip ${sessionState.counters.autosavesSkipped}`)
   }
 
-  if (sessionState.lastAutosave?.outcome === "failed") {
-    return `MEM FAILED · ${parts.join(" · ")}`
-  }
-  if (sessionState.lastAutosave?.outcome === "skipped") {
-    return `MEM SKIPPED · ${parts.join(" · ")}`
-  }
-
-  return `MEM ${parts.join(" · ")}`
+  return flags.length ? `${label} · ${flags.join(" · ")}` : label
 }
 
 const pushRetrievalLines = (lines: string[], retrieval: StatusRetrieval | StatusRetrievalPrompt, verbose: boolean) => {
@@ -642,8 +681,9 @@ export const formatStatusSummary = (
 
   lines.push("- Totals:")
   lines.push(`  retrieval prompts: ${state.counters.retrievalPrompts}`)
+  const j = state.counters.retrievalJudge
   lines.push(`  retrieval searches: ${state.counters.retrievalSearches}`)
-  lines.push(`  retrieval hits: ${state.counters.retrievalHits}`)
+  lines.push(`  retrieval judge: none ${j.none} · cited ${j.cited} · improved ${j.improved} · saved-time ${j.savedTime} · unknown ${j.unknown}`)
   lines.push(`  autosaves completed: ${state.counters.autosavesCompleted}`)
   lines.push(`  autosaves skipped: ${state.counters.autosavesSkipped}`)
   lines.push(`  autosaves failed: ${state.counters.autosavesFailed}`)

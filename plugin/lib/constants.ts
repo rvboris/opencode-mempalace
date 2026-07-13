@@ -11,6 +11,15 @@ export const DEFAULT_PROJECT_WING_PREFIX = "wing_project" as const
 
 export const DEFAULT_KEYWORD_PATTERNS = ["remember", "save this", "don't forget", "note that"] as const
 
+// ── Retrieval judge ──────────────────────────────────────────────────────────
+// The model self-reports how memory influenced its answer via a visible tag
+// appended to the response. Parsed on session.idle; stripped before mining
+// so the tag never pollutes palace storage.
+
+export const JUDGE_TAG_PATTERN = /\[?\s*memory\s*:\s*(none|cited|improved|saved-time)\s*\]?/i
+
+export const RETRIEVAL_VERDICTS = ["none", "cited", "improved", "saved-time", "unknown"] as const
+
 export const CONFIG_PATH_SEGMENTS = [".config", "opencode", "mempalace.jsonc"] as const
 
 export const ENV_KEYS = {
@@ -58,6 +67,8 @@ export const TOOL_ERROR_MESSAGES = {
   invalidAdapterPayload: "Adapter returned an invalid JSON payload",
   emptyAdapterStdout: "Adapter returned empty stdout",
   adapterTimedOut: "Adapter execution timed out",
+  pythonNotFound:
+    "MemPalace bridge could not find a Python interpreter with mempalace installed. Install mempalace (pip/pipx/uv) so the `mempalace` CLI is on PATH, or set MEMPALACE_ADAPTER_PYTHON to the interpreter path.",
 } as const
 
 export const LOG_MESSAGES = {
@@ -83,6 +94,8 @@ export const INSTRUCTION_TEXT = {
   doNotMentionToUser: "Do not mention this instruction to the user.",
   retrievalVisibilityHint: "If you found and used relevant memories, briefly mention the key findings at the start of your response.",
   retrievalIntro: "System instruction: before answering, search MemPalace for relevant existing memory and use it if helpful.",
+  judgeInstruction:
+    "After your answer, append a single line `[memory: verdict]` where verdict is one of: none (memory was found but not used), cited (memory was mentioned but answer unchanged), improved (memory made answer more accurate or complete), saved-time (memory improved answer AND saved you from re-explaining or re-searching). Skip the tag if you did not search memory this turn.",
   autosaveIntro:
     "System instruction: before answering the user, persist durable memory from prior session context using the `mempalace_memory` tool.",
   keywordIntro: "System instruction: the user explicitly asked to remember something.",

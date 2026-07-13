@@ -92,4 +92,35 @@ describe("eventHooks", () => {
     expect(adapterCalls[0].transcript).toContain("Борис")
     expect(/[\uDC00-\uDFFF]/.test(adapterCalls[0].transcript)).toBe(false)
   })
+
+  it("skips autosave mining for tiny junk fragments", async () => {
+    resetConfig()
+    resetAllStates()
+    await resetStatusState()
+    adapterCalls.length = 0
+    const hooks = eventHooks({
+      client: {
+        session: {
+          messages: async () => ({
+            data: [
+              { role: "user", content: "re." },
+              { role: "assistant", content: "ls>" },
+              { role: "user", content: "fy. |" },
+            ],
+          }),
+        },
+      },
+      project: { name: "Demo" },
+      directory: "",
+      worktree: "",
+      $: async () => {},
+    })
+
+    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-4" } } })
+
+    expect(adapterCalls).toHaveLength(0)
+    expect(getSessionState("event-4").status).toBe(AutosaveStatus.Noop)
+    const status = await readStatusState()
+    expect(status.lastAutosave?.outcome).toBe("skipped")
+  })
 })
