@@ -37,7 +37,7 @@ Add to `opencode.json`:
 
 ```json
 {
-  "plugin": ["@rvboris/opencode-mempalace"]
+  "plugins": ["@rvboris/opencode-mempalace"]
 }
 ```
 
@@ -180,9 +180,11 @@ MEM helps 1 · fail 1
 - `MEM quiet` — no retrieval activity yet
 - `· fail N` / `· skip N` — shown only when autosave has errors
 
-The HUD combines retrieval evidence with a **judge signal**. When the model reports `[memory: verdict]`, the plugin parses it after each turn and strips it before saving. If no verdict is available, retrieval results still show as `found`, `no hits`, or `searched`. Requires a `tui.json` entry (see below).
+The HUD combines retrieval evidence with a **judge signal**. When the model reports `[memory: verdict]`, the plugin parses it after each turn and strips it before saving. If no verdict is available, retrieval results still show as `found`, `no hits`, or `searched`. Requires a `cli.json` entry (see below).
 
 ## Memory areas
+
+In V2, project wings use the project basename as their canonical identity. The plugin does not silently migrate existing wings created under V1's arbitrary display-name convention; review/rename existing palace data explicitly if needed.
 
 **User memory** — cross-project preferences and habits:
 
@@ -230,15 +232,17 @@ Environment variables:
 | `MEMPALACE_ADAPTER_PYTHON` | Path to Python binary |
 | `MEMPALACE_ADAPTER_TIMEOUT_MS` | Adapter timeout (default 15000) |
 
+The HUD runs in the local OpenCode CLI and reads the status file written by the plugin. For remote/SSH OpenCode sessions, install/configure the plugin and ensure the HUD can access the same local status file; it is not a remote HUD service.
+
 ## TUI HUD setup
 
-To enable the prompt-area stats display, add a `tui.json` in your OpenCode config directory:
+This release requires OpenCode V2, which has breaking plugin API changes. Plugin configuration uses the plural `plugins` key. The HUD CLI plugin is configured in `cli.json` in your OpenCode config directory:
 
 ```json
 {
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": [
-    "file:///path/to/opencode-mempalace/plugin/tui/index.tsx"
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": [
+    "file:///path/to/opencode-mempalace"
   ]
 }
 ```
@@ -247,8 +251,8 @@ Or when installed from npm, use the package entry:
 
 ```json
 {
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": ["@rvboris/opencode-mempalace/tui"]
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": ["@rvboris/opencode-mempalace"]
 }
 ```
 
@@ -256,7 +260,7 @@ Or when installed from npm, use the package entry:
 
 | Requirement | Version |
 |---|---|
-| OpenCode | latest |
+| OpenCode | V2 (required; V1 is incompatible) |
 | Python | 3.10+ |
 | MemPalace | 3.3+ |
 | OS | macOS, Linux, Windows |
@@ -279,7 +283,7 @@ Load from source in `opencode.json`:
 
 ```jsonc
 {
-  "plugin": ["file:///ABSOLUTE/PATH/TO/opencode-mempalace/plugin/index.ts"]
+  "plugins": ["file:///ABSOLUTE/PATH/TO/opencode-mempalace"]
 }
 ```
 

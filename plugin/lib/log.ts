@@ -1,8 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { ENV_KEYS, LOG_FILE_NAME, SERVICE_NAME } from "./constants"
-import type { AppLoggerClient } from "./types"
+import { ENV_KEYS, LOG_FILE_NAME } from "./constants"
 
 type LogLevel = "INFO" | "WARN" | "ERROR"
 
@@ -28,28 +27,8 @@ const writeFileLog = async (level: LogLevel, message: string, details?: Record<s
   }
 }
 
-const toAppLevel = (level: LogLevel) => {
-  if (level === "WARN") return "warn"
-  if (level === "ERROR") return "error"
-  return "info"
-}
-
-export const setLogger = (client: AppLoggerClient) => {
-  logger = async (level, message, details) => {
-    await writeFileLog(level, message, details)
-    try {
-      await client.app?.log?.({
-        body: {
-          service: SERVICE_NAME,
-          level: toAppLevel(level),
-          message,
-          extra: details,
-        },
-      })
-    } catch {
-      // avoid crashing plugin because of logging
-    }
-  }
+export const setLogger = () => {
+  logger = writeFileLog
 }
 
 export const resetLogger = () => {

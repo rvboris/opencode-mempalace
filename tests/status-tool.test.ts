@@ -1,23 +1,8 @@
-import { describe, expect, it, mock } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 
 process.env.MEMPALACE_STATUS_FILE = path.join(os.tmpdir(), "mempalace-status-tool.json")
-
-const createSchemaStub = () => ({
-  optional: () => ({ default: () => ({}) }),
-  default: () => ({}),
-})
-
-const mockTool = Object.assign(<T>(input: T) => input, {
-  schema: {
-    boolean: () => createSchemaStub(),
-  },
-})
-
-mock.module("@opencode-ai/plugin", () => ({
-  tool: mockTool,
-}))
 
 const { recordAutosave, recordMemoryWrite, recordRetrievalSearch, resetStatusState } = await import("../plugin/lib/status")
 const { mempalaceStatusTool } = await import("../plugin/tools/mempalace-status")
@@ -51,15 +36,15 @@ describe("mempalaceStatusTool", () => {
     const toolDef = mempalaceStatusTool()
     const result = await toolDef.execute(
       { verbose: true },
-      { sessionID: "status-1", messageID: "m", agent: "a", abort: new AbortController().signal },
+      { sessionID: "status-1" },
     )
 
-    expect(result).toContain("Current session")
-    expect(result).toContain("- Memory lookup: found 2 relevant memories.")
-    expect(result).toContain("Relevant memories:")
-    expect(result).toContain("- Autosave: saved session context after idle.")
-    expect(result).toContain("Last activity")
-    expect(result).toContain("Last explicit memory write: save stored `Use Bun for local test runs.`.")
+    expect(result.content).toContain("Current session")
+    expect(result.content).toContain("- Memory lookup: found 2 relevant memories.")
+    expect(result.content).toContain("Relevant memories:")
+    expect(result.content).toContain("- Autosave: saved session context after idle.")
+    expect(result.content).toContain("Last activity")
+    expect(result.content).toContain("Last explicit memory write: save stored `Use Bun for local test runs.`.")
   })
 
   it("uses compact output by default for quick checks", async () => {
@@ -82,12 +67,12 @@ describe("mempalaceStatusTool", () => {
 
     const toolDef = mempalaceStatusTool()
     const result = await toolDef.execute(
-      {},
-      { sessionID: "status-compact", messageID: "m", agent: "a", abort: new AbortController().signal },
+      { compact: true },
+      { sessionID: "status-compact" },
     )
 
-    expect(result).toContain("- Current session: 1 relevant memory found; autosave saved after idle.")
-    expect(result).toContain("- Last activity: no memory lookup recorded; no autosave recorded.")
-    expect(result).not.toContain("Totals:")
+    expect(result.content).toContain("- Current session: 1 relevant memory found; autosave saved after idle.")
+    expect(result.content).toContain("- Last activity: no memory lookup recorded; no autosave recorded.")
+    expect(result.content).not.toContain("Totals:")
   })
 })

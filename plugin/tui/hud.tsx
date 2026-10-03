@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { createSignal } from "solid-js"
 import { formatSessionHud, readStatusState, type StatusState } from "../lib/status"
 
@@ -20,48 +20,55 @@ const EMPTY_STATE: StatusState = {
 }
 
 const REFRESH_EVENTS = [
-  "message.updated",
-  "message.part.updated",
   "session.idle",
-  "session.compacted",
-  "session.error",
+  "session.execution.succeeded",
+  "session.execution.failed",
+  "session.execution.interrupted",
+  "session.compaction.ended",
   "session.deleted",
 ] as const
 
-export const registerStatusHud = async (api: TuiPluginApi) => {
+export const registerStatusHud = async (ctx: Plugin.Context) => {
   const [status, setStatus] = createSignal<StatusState>(EMPTY_STATE)
+  let disposed = false
+  let refreshing = false
 
   const refresh = async () => {
-    setStatus(await readStatusState())
+    if (disposed || refreshing) return
+    refreshing = true
+    try {
+      const next = await readStatusState()
+      if (!disposed) setStatus(next)
+    } finally {
+      refreshing = false
+    }
   }
 
   await refresh()
-
-  for (const eventType of REFRESH_EVENTS) {
-    const dispose = api.event.on(eventType, () => {
-      void refresh()
-    })
-    api.lifecycle.onDispose(dispose)
-  }
-
-  api.slots.register({
-    slots: {
-      session_prompt_right(ctx, props) {
-        const label = formatSessionHud(status(), props.session_id)
-        const isFailed = label.startsWith("MEM FAILED")
-        const isSkipped = label.startsWith("MEM SKIPPED")
-        const accent = isFailed
-          ? ctx.theme.current.error
-          : isSkipped
-            ? ctx.theme.current.warning
-            : ctx.theme.current.secondary ?? ctx.theme.current.primary
-        return (
-          <text fg={ctx.theme.current.textMuted}>
-            <span style={{ fg: accent }}>MEM</span>
-            {` ${label.slice(4)}`}
-          </text>
-        )
-      },
+  const stops = REFRESH_EVENTS.map((event) => ctx.data.on(event, () => void refresh()))
+  // Server autosave can write after its event; polling also catches manual writes.
+  const timer = setInterval(() => void refresh(), 2_000)
+  const removeSlot = ctx.ui.slot({
+    append: "prompt.footer.status",
+    render(props) {
+      const label = () => formatSessionHud(status(), props.sessionID ?? "")
+      const accent = () => label().includes(" · fail ")
+        ? ctx.theme.text.feedback.error.base
+        : label().includes(" · skip ")
+          ? ctx.theme.text.feedback.warning.base
+          : ctx.theme.text.action.secondary.base
+      return (
+        <text fg={ctx.theme.text.muted}>
+          <span style={{ fg: accent() }}>{label()}</span>
+        </text>
+      )
     },
   })
+
+  return () => {
+    disposed = true
+    clearInterval(timer)
+    for (const stop of stops) stop()
+    removeSlot()
+  }
 }

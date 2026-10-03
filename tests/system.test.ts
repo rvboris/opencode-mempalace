@@ -20,15 +20,13 @@ describe("systemHooks", () => {
     markRetrievalPending("sys-1", "user-1")
     const output = { system: [] as string[] }
 
-    const hooks = systemHooks({
-      client: {
-        session: { messages: async () => ({ data: [{ role: "user", content: "Remember this" }] }) },
-      },
-      project: { name: "Demo" },
-    })
-    await hooks["experimental.chat.system.transform"]?.({ sessionID: "sys-1" }, output)
+    const ctx = {
+      session: { context: async () => [{ type: "user", id: "u1", time: { created: 1 }, text: "Remember this" }] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    await systemHooks(ctx, { sessionID: "sys-1" }, output)
 
-    expect(output.system.length).toBe(1)
+    expect(output.system.length).toBe(2)
     expect(getSessionState("sys-1").retrievalPending).toBe(false)
     const status = await readStatusState()
     expect(status.counters.retrievalPrompts).toBe(1)
@@ -40,8 +38,11 @@ describe("systemHooks", () => {
     resetAllStates()
     await resetStatusState()
     const output = { system: [] as string[] }
-    const hooks = systemHooks({ client: { session: { messages: async () => ({ data: [] }) } }, project: {} })
-    await hooks["experimental.chat.system.transform"]?.({}, output)
+    const ctx = {
+      session: { context: async () => [] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    await systemHooks(ctx, { sessionID: "sys-empty" }, output)
     expect(output.system.length).toBe(0)
   })
 
@@ -53,47 +54,35 @@ describe("systemHooks", () => {
     markRetrievalPending("sys-b", "user-b")
     const output = { system: [] as string[] }
 
-    const hooks = systemHooks({
-      client: {
-        session: {
-          messages: async ({ path }: { path: { id: string } }) => ({ data: [{ role: "user", content: path.id }] }),
-        },
-      },
-      project: { name: "Demo" },
-    })
+    const ctx = {
+      session: { context: async ({ sessionID }: { sessionID: string }) => [{ type: "user", id: sessionID, time: { created: 1 }, text: sessionID === "sys-a" ? "user-a" : "user-b" }] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
 
-    await hooks["experimental.chat.system.transform"]?.({ sessionID: "sys-a" }, output)
+    await systemHooks(ctx, { sessionID: "sys-a" }, output)
 
     expect(output.system.length).toBe(1)
     expect(getSessionState("sys-a").retrievalPending).toBe(false)
     expect(getSessionState("sys-b").retrievalPending).toBe(true)
   })
 
-  it("reuses cached snapshot after message update", async () => {
+  it("retrieves from fresh session context after message update", async () => {
     resetConfig()
     resetAllStates()
     await resetStatusState()
     let messageCalls = 0
-    const client = {
+    const ctx = {
       session: {
-        messages: async () => {
+        context: async () => {
           messageCalls += 1
-          return { data: [{ role: "user", content: "Cache me" }] }
+          return [{ type: "user", id: "cache-user", time: { created: 1 }, text: "Cache me" }]
         },
       },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
     }
 
-    const event = eventHooks({
-      client,
-      project: { name: "Demo" },
-      directory: "",
-      worktree: "",
-      $: async () => {},
-    })
-    const system = systemHooks({ client, project: { name: "Demo" } })
-
-    await event.event?.({ event: { type: "message.updated", properties: { sessionID: "sys-cache" } } })
-    await system["experimental.chat.system.transform"]?.({ sessionID: "sys-cache" }, { system: [] })
+    await eventHooks(ctx, { type: "message.updated", data: { sessionID: "sys-cache" } })
+    await systemHooks(ctx, { sessionID: "sys-cache" }, { system: [] })
 
     expect(messageCalls).toBe(1)
   })

@@ -1,4 +1,4 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@rvboris/opencode-mempalace"]
+  "plugins": ["@rvboris/opencode-mempalace"]
 }

@@ -1,14 +1,8 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { Plugin } from "@opencode/plugin/tui"
 import { registerStatusHud } from "./hud"
 
-const tui: TuiPlugin = async (api) => {
-  await registerStatusHud(api)
-}
-
-const plugin: TuiPluginModule & { id: string } = {
+export default Plugin.define({
   id: "rvboris.mempalace-hud",
-  tui,
-}
-
-export default plugin
+  setup: registerStatusHud,
+})

@@ -20,5 +20,22 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
+// tsc supplies declarations and server output; TUI JSX needs Solid's reactive transform.
+const tui = spawnSync("bun", ["--eval", `
+  import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+  const result = await Bun.build({
+    entrypoints: ["./plugin/tui/index.tsx", "./plugin/tui/hud.tsx"],
+    outdir: "./dist/plugin/tui",
+    target: "bun",
+    packages: "external",
+    plugins: [createSolidTransformPlugin()],
+  })
+  if (!result.success) {
+    console.error(result.logs)
+    process.exit(1)
+  }
+`], { cwd: root, stdio: "inherit" })
+if (tui.status !== 0) process.exit(tui.status ?? 1)
+
 await mkdir(path.join(dist, "bridge"), { recursive: true })
 await cp(path.join(root, "bridge", "mempalace_adapter.py"), path.join(dist, "bridge", "mempalace_adapter.py"))

@@ -1,22 +1,28 @@
-import type { PluginInput } from "@opencode-ai/plugin"
-import type { MessageLike, SessionMessagesResponse } from "./types"
+import path from "node:path"
+import type { SessionMessageInfo } from "@opencode/client"
+import type { MessageLike } from "./types"
 
-export const getProjectName = (project: unknown) => {
-  return typeof project === "object" && project !== null && "name" in project && typeof project.name === "string"
-    ? project.name
-    : undefined
-}
+export const getProjectName = (project: { canonical: string; directory: string }) =>
+  path.basename(project.canonical || project.directory)
 
-export const getSessionMessages = (response: SessionMessagesResponse): readonly MessageLike[] => {
-  if (Array.isArray(response)) return response
-  if (response && typeof response === "object" && "data" in response && Array.isArray(response.data)) return response.data
-  return []
-}
+export const normalizeTranscript = (messages: readonly SessionMessageInfo[]): MessageLike[] =>
+  messages.flatMap((message): MessageLike[] => {
+    if (message.type === "user") {
+      return [{ role: "user", content: message.text }]
+    }
+    if (message.type === "assistant") {
+      const text = message.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.type === "text" ? part.text : "")
+        .join("")
+      return text ? [{ role: "assistant", content: text }] : []
+    }
+    return []
+  })
+
+export const getSessionMessages = (response: readonly SessionMessageInfo[]) => normalizeTranscript(response)
 
 export const loadSessionMessages = async (
-  client: PluginInput["client"],
+  ctx: { session: { context(input: { sessionID: string }): Promise<readonly SessionMessageInfo[]> } },
   sessionId: string,
-): Promise<readonly MessageLike[]> => {
-  const response = await client.session.messages({ path: { id: sessionId } })
-  return getSessionMessages(response)
-}
+): Promise<MessageLike[]> => normalizeTranscript(await ctx.session.context({ sessionID: sessionId }))
