@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 
@@ -11,7 +11,11 @@ const ctx = { location: { project: { canonical: "/tmp/Demo", directory: "/tmp/De
 const execContext = { sessionID: "v2-test" }
 const parse = (result: { content: string }) => JSON.parse(result.content)
 
+const { setAdapterSpawnForTests, resetAdapterTestHooks } = await import("../plugin/lib/adapter")
+
 describe("V2 native tools", () => {
+  afterEach(() => resetAdapterTestHooks())
+
   it("defines native tool metadata and rejects malformed inputs", async () => {
     const memory = mempalaceMemoryTool(ctx)
     expect(memory.name).toBe("mempalace_memory")
@@ -24,7 +28,6 @@ describe("V2 native tools", () => {
   })
 
   it("validates checkpoint shapes and redacts nested persisted text", async () => {
-    const { setAdapterSpawnForTests, resetAdapterTestHooks } = await import("../plugin/lib/adapter")
     const { EventEmitter } = await import("node:events")
     class Stream extends EventEmitter {}
     let adapterPayload = ""
