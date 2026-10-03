@@ -37,7 +37,7 @@ mempalace init ~/.mempalace/palace
 
 ```json
 {
-  "plugin": ["@rvboris/opencode-mempalace"]
+  "plugins": ["@rvboris/opencode-mempalace"]
 }
 ```
 
@@ -180,9 +180,11 @@ MEM helps 1 · fail 1
 - `MEM quiet` — поиск по памяти ещё не выполнялся
 - `· fail N` / `· skip N` — показываются только при ошибках автосохранения
 
-HUD совмещает факт поиска и **judge-сигнал**. Когда модель сообщает `[memory: verdict]`, плагин парсит тег после хода и вырезает перед сохранением. Если вердикта нет, результаты поиска всё равно видны как `found`, `no hits` или `searched`. Требует записи в `tui.json` (см. ниже).
+HUD совмещает факт поиска и **judge-сигнал**. Когда модель сообщает `[memory: verdict]`, плагин парсит тег после хода и вырезает перед сохранением. Если вердикта нет, результаты поиска всё равно видны как `found`, `no hits` или `searched`. Требует записи в `cli.json` (см. ниже).
 
 ## Области памяти
+
+В V2 канонический идентификатор project wing — basename проекта. Плагин не выполняет незаметную миграцию существующих wings, созданных по соглашению V1 с произвольными отображаемыми именами; при необходимости проверь и переименуй данные palace явно.
 
 **Память пользователя** — кросс-проектные предпочтения и привычки:
 
@@ -230,15 +232,17 @@ HUD совмещает факт поиска и **judge-сигнал**. Когд
 | `MEMPALACE_ADAPTER_PYTHON` | Путь к бинарнику Python |
 | `MEMPALACE_ADAPTER_TIMEOUT_MS` | Таймаут адаптера (по умолчанию 15000) |
 
+HUD работает в локальном CLI OpenCode и читает файл состояния, записанный плагином. Для удалённых/SSH-сессий OpenCode плагин и HUD должны иметь доступ к одному локальному файлу состояния; это не удалённый HUD-сервис.
+
 ## Настройка TUI HUD
 
-Чтобы включить отображение статистики в строке промпта, добавь `tui.json` в каталог конфигурации OpenCode:
+Этот релиз требует OpenCode V2: API плагинов несовместим с V1. В конфигурации плагинов используется ключ `plugins` во множественном числе. CLI-плагин HUD настраивается через `cli.json` в каталоге конфигурации OpenCode:
 
 ```json
 {
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": [
-    "file:///путь/до/opencode-mempalace/plugin/tui/index.tsx"
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": [
+    "file:///путь/до/opencode-mempalace"
   ]
 }
 ```
@@ -247,8 +251,8 @@ HUD совмещает факт поиска и **judge-сигнал**. Когд
 
 ```json
 {
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": ["@rvboris/opencode-mempalace/tui"]
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": ["@rvboris/opencode-mempalace"]
 }
 ```
 
@@ -256,7 +260,7 @@ HUD совмещает факт поиска и **judge-сигнал**. Когд
 
 | Требование | Версия |
 |---|---|
-| OpenCode | latest |
+| OpenCode | V2 (обязателен; V1 несовместим) |
 | Python | 3.10+ |
 | MemPalace | 3.3+ |
 | ОС | macOS, Linux, Windows |
@@ -279,7 +283,7 @@ npm run build
 
 ```jsonc
 {
-  "plugin": ["file:///ABSOLUTE/PATH/TO/opencode-mempalace/plugin/index.ts"]
+  "plugins": ["file:///ABSOLUTE/PATH/TO/opencode-mempalace"]
 }
 ```
 

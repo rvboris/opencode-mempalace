@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and versions are managed by `release-please`.
 
+## [1.0.0] - Pending release
+
+### Changed
+
+- **Breaking:** Require OpenCode V2; update plugin configuration to the `plugins` key and configure the HUD through V2 `cli.json`.
+- Project memory wings use the project basename as their canonical identity. Existing wings created with V1 arbitrary display names are not silently migrated; review and migrate them explicitly if needed.
+- Update the HUD plugin loading example to use the package root/directory, supported by V2 CLI plugin discovery.
+
 ## [0.5.0](https://github.com/rvboris/opencode-mempalace/compare/opencode-mempalace-v0.4.0...opencode-mempalace-v0.5.0) (2026-07-13)
 
 ### Added

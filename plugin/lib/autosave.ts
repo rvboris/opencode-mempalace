@@ -24,6 +24,9 @@ export type SessionAutosaveState = {
   lastHandledUserDigest?: string
   lastHandledTranscriptDigest?: string
   lastRetrievedUserDigest?: string
+  lastJudgedUserDigest?: string
+  lastKeywordSavedUserDigest?: string
+  pendingCompactionSnapshot?: SessionMessageSnapshot
   retryCount: number
   lastFailureAt?: number
   messageSnapshot?: SessionMessageSnapshot
@@ -169,8 +172,17 @@ export const setMessageSnapshot = (sessionId: string, snapshot: SessionMessageSn
   state.updatedAt = Date.now()
 }
 
-export const getMessageSnapshot = (sessionId: string) => {
-  return getSessionState(sessionId).messageSnapshot
+export const getMessageSnapshot = (sessionId: string) => getSessionState(sessionId).messageSnapshot
+
+export const setPendingCompactionSnapshot = (sessionId: string, snapshot: SessionMessageSnapshot) => {
+  getSessionState(sessionId).pendingCompactionSnapshot = snapshot
+}
+
+export const takePendingCompactionSnapshot = (sessionId: string) => {
+  const state = getSessionState(sessionId)
+  const snapshot = state.pendingCompactionSnapshot
+  state.pendingCompactionSnapshot = undefined
+  return snapshot
 }
 
 export const markKeywordSavePending = (sessionId: string) => {

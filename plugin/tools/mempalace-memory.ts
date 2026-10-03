@@ -1,4 +1,5 @@
-import { tool } from "@opencode-ai/plugin"
+import type { Tool } from "@opencode/schema/tool"
+import type { Context as V2PluginContext } from "@opencode/plugin/promise/plugin"
 import { executeAdapter } from "../lib/adapter"
 import { loadConfig } from "../lib/config"
 import { sanitizeText } from "../lib/derive"
@@ -8,7 +9,7 @@ import { isFullyPrivate, redactSecrets } from "../lib/privacy"
 import { getProjectScope, getUserScope } from "../lib/scope"
 import { recordMemoryWrite, recordRetrievalSearch, summarizeSearchResult } from "../lib/status"
 import { writeLog } from "../lib/log"
-import { MEMORY_SCOPES, TOOL_MEMORY_MODES, type MemoryScope, type ToolContext } from "../lib/types"
+import { MEMORY_SCOPES, TOOL_MEMORY_MODES, type MemoryScope } from "../lib/types"
 
 type SaveArgs = {
   mode: "save"
@@ -89,6 +90,18 @@ type MemoryToolArgs =
   | DiaryReadArgs
   | CheckpointArgs
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+const parseMemoryArgs = (input: unknown): MemoryToolArgs | undefined => {
+  if (!isRecord(input) || typeof input.mode !== "string" || !(TOOL_MEMORY_MODES as readonly string[]).includes(input.mode)) return
+  if (input.scope !== undefined && !(MEMORY_SCOPES as readonly string[]).includes(String(input.scope))) return
+  const strings = ["room", "content", "query", "subject", "predicate", "object", "topic", "agent_name", "source_file", "drawer_id", "entity", "as_of", "items", "diary"]
+  if (strings.some((key) => input[key] !== undefined && typeof input[key] !== "string")) return
+  if (["limit", "last_n", "dedup_threshold"].some((key) => input[key] !== undefined && (typeof input[key] !== "number" || !Number.isFinite(input[key])))) return
+  if (input.dry_run !== undefined && typeof input.dry_run !== "boolean") return
+  if (input.direction !== undefined && !["outgoing", "incoming", "both"].includes(String(input.direction))) return
+  return input as MemoryToolArgs
+}
+
 const getProjectWing = (projectName: string | undefined, prefix: string) => {
   return getProjectScope(projectName, prefix).wing
 }
@@ -103,73 +116,95 @@ const normalizeValue = (value: string | undefined, redact: boolean) => {
   return redact ? redactSecrets(sanitized) : sanitized
 }
 
-export const mempalaceMemoryTool = (ctx: ToolContext) =>
-  tool({
+const executeToolAdapter = async (shell: unknown, payload: Parameters<typeof executeAdapter>[1]) => {
+  try {
+    return await executeAdapter(shell, payload)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+type MemoryToolContext = Pick<V2PluginContext, "location">
+
+export const mempalaceMemoryTool = (ctx: MemoryToolContext) => ({
+    name: "mempalace_memory",
     description: TOOL_DESCRIPTIONS.mempalaceMemory,
-    args: {
-      mode: tool.schema.enum([...TOOL_MEMORY_MODES]),
-      scope: tool.schema.enum([...MEMORY_SCOPES]).optional().default("project"),
-      room: tool.schema.string().optional().default(DEFAULT_ROOM),
-      content: tool.schema.string().optional(),
-      query: tool.schema.string().optional(),
-      subject: tool.schema.string().optional(),
-      predicate: tool.schema.string().optional(),
-      object: tool.schema.string().optional(),
-      topic: tool.schema.string().optional().default(DEFAULT_TOPIC),
-      agent_name: tool.schema.string().optional().default(DEFAULT_AGENT_NAME),
-      limit: tool.schema.number().optional().default(DEFAULT_LIMIT),
-      source_file: tool.schema.string().optional(),
-      drawer_id: tool.schema.string().optional(),
-      entity: tool.schema.string().optional(),
-      as_of: tool.schema.string().optional(),
-      direction: tool.schema.enum(["outgoing", "incoming", "both"]).optional().default("both"),
-      dry_run: tool.schema.boolean().optional().default(true),
-      last_n: tool.schema.number().optional().default(10),
-      items: tool.schema.string().optional(),
-      diary: tool.schema.string().optional(),
-      dedup_threshold: tool.schema.number().optional().default(0.9),
+    input: {
+      type: "object",
+      properties: {
+      mode: { type: "string", enum: [...TOOL_MEMORY_MODES] },
+      scope: { type: "string", enum: [...MEMORY_SCOPES] },
+      room: { type: "string", default: DEFAULT_ROOM },
+      content: { type: "string" },
+      query: { type: "string" },
+      subject: { type: "string" },
+      predicate: { type: "string" },
+      object: { type: "string" },
+      topic: { type: "string", default: DEFAULT_TOPIC },
+      agent_name: { type: "string", default: DEFAULT_AGENT_NAME },
+      limit: { type: "number", default: DEFAULT_LIMIT },
+      source_file: { type: "string" },
+      drawer_id: { type: "string" },
+      entity: { type: "string" },
+      as_of: { type: "string" },
+      direction: { type: "string", enum: ["outgoing", "incoming", "both"], default: "both" },
+      dry_run: { type: "boolean", default: true },
+      last_n: { type: "number", default: 10 },
+      items: { type: "string" },
+      diary: { type: "string" },
+      dedup_threshold: { type: "number", default: 0.9 },
+      },
+      required: ["mode"],
+      additionalProperties: false,
     },
-    async execute(args: MemoryToolArgs, executionContext: { sessionID?: string }) {
+    async execute(input: unknown, executionContext: { sessionID?: string }): Promise<Tool.Result> {
+      const args = parseMemoryArgs(input)
+      if (!args) return { content: JSON.stringify({ success: false, error: "Invalid tool arguments" }) }
       const config = await loadConfig()
       const scope = args.scope ?? "project"
       const wing =
         scope === "user"
           ? getUserWing(config.userWingPrefix)
-          : getProjectWing(getProjectName(ctx.project), config.projectWingPrefix)
+          : getProjectWing(getProjectName(ctx.location.project), config.projectWingPrefix)
 
       if (args.mode === "save") {
-        if (!args.content) return JSON.stringify({ success: false, error: ERROR_MESSAGES.contentRequired })
+        const room = normalizeValue(args.room ?? DEFAULT_ROOM, false) ?? DEFAULT_ROOM
+        if (!args.content) return { content: JSON.stringify({ success: false, error: ERROR_MESSAGES.contentRequired }) }
         if (isFullyPrivate(args.content)) {
-          return JSON.stringify({ success: false, error: ERROR_MESSAGES.fullyPrivate })
+          return { content: JSON.stringify({ success: false, error: ERROR_MESSAGES.fullyPrivate }) }
         }
         const content = normalizeValue(args.content, config.privacyRedactionEnabled) ?? ""
-        const result = await executeAdapter(ctx.$, {
+        const result = await executeToolAdapter(undefined, {
           mode: "save",
           wing,
-          room: normalizeValue(args.room, false),
+          room,
           content,
           added_by: DEFAULT_AGENT_NAME,
         })
-        if (result?.success !== false) {
+        const saveResult = result?.success === false
+          ? result
+          : { ...result, success: true, wing, room, scope, already_exists: result?.already_exists === true }
+        if (saveResult.success !== false) {
           await recordMemoryWrite({
             sessionId: executionContext.sessionID,
             mode: "save",
             scope,
-            room: args.room,
+            room,
             preview: content,
           })
         }
-        return JSON.stringify(result)
+        return { content: JSON.stringify(saveResult) }
       }
 
       if (args.mode === "search") {
-        if (!args.query) return JSON.stringify({ success: false, error: ERROR_MESSAGES.queryRequired })
+        const room = normalizeValue(args.room ?? DEFAULT_ROOM, false) ?? DEFAULT_ROOM
+        if (!args.query) return { content: JSON.stringify({ success: false, error: ERROR_MESSAGES.queryRequired }) }
         const query = normalizeValue(args.query, config.privacyRedactionEnabled) ?? ""
-        const result = await executeAdapter(ctx.$, {
+        const result = await executeToolAdapter(undefined, {
           mode: "search",
           query,
           wing,
-          room: normalizeValue(args.room, false),
+          room,
           limit: args.limit,
           source_file: args.source_file,
         })
@@ -178,14 +213,14 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           await recordRetrievalSearch({
             sessionId: executionContext.sessionID,
             scope,
-            room: args.room,
+            room,
             query,
             result,
           })
           await writeLog("INFO", LOG_MESSAGES.retrievalSearchCompleted, {
             sessionId: executionContext.sessionID,
             scope,
-            room: args.room,
+            room,
             query: query.slice(0, 200),
             resultCount: summary.resultCount ?? 0,
             previews: summary.previews,
@@ -197,17 +232,17 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
         const enriched = typeof result === "object" && result !== null
           ? { ...result, _retrieval_summary: retrievalNote }
           : result
-        return JSON.stringify(enriched)
+        return { content: JSON.stringify(enriched) }
       }
 
       if (args.mode === "kg_add") {
         if (!args.subject || !args.predicate || !args.object) {
-          return JSON.stringify({ success: false, error: ERROR_MESSAGES.fieldsRequired })
+          return { content: JSON.stringify({ success: false, error: ERROR_MESSAGES.fieldsRequired }) }
         }
         const subject = normalizeValue(args.subject, config.privacyRedactionEnabled) ?? ""
         const predicate = normalizeValue(args.predicate, false) ?? ""
         const object = normalizeValue(args.object, config.privacyRedactionEnabled) ?? ""
-        const result = await executeAdapter(ctx.$, {
+        const result = await executeToolAdapter(undefined, {
           mode: "kg_add",
           subject,
           predicate,
@@ -223,60 +258,68 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
             preview: `${subject} ${predicate} ${object}`,
           })
         }
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       if (args.mode === "delete") {
-        if (!args.drawer_id) return JSON.stringify({ success: false, error: "drawer_id is required" })
-        const result = await executeAdapter(ctx.$, {
+        if (!args.drawer_id) return { content: JSON.stringify({ success: false, error: "drawer_id is required" }) }
+        const result = await executeToolAdapter(undefined, {
           mode: "delete",
           drawer_id: args.drawer_id,
         })
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       if (args.mode === "delete_by_source") {
-        if (!args.source_file) return JSON.stringify({ success: false, error: "source_file is required" })
-        const result = await executeAdapter(ctx.$, {
+        if (!args.source_file) return { content: JSON.stringify({ success: false, error: "source_file is required" }) }
+        const result = await executeToolAdapter(undefined, {
           mode: "delete_by_source",
           source_file: args.source_file,
           dry_run: args.dry_run ?? true,
         })
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       if (args.mode === "kg_query") {
-        if (!args.entity) return JSON.stringify({ success: false, error: "entity is required" })
-        const result = await executeAdapter(ctx.$, {
+        if (!args.entity) return { content: JSON.stringify({ success: false, error: "entity is required" }) }
+        const result = await executeToolAdapter(undefined, {
           mode: "kg_query",
           entity: args.entity,
           as_of: args.as_of,
           direction: args.direction ?? "both",
         })
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       if (args.mode === "diary_read") {
-        const result = await executeAdapter(ctx.$, {
+        const result = await executeToolAdapter(undefined, {
           mode: "diary_read",
           agent_name: args.agent_name ?? DEFAULT_AGENT_NAME,
           last_n: args.last_n ?? 10,
           wing: scope === "user" ? getUserWing(config.userWingPrefix) : wing,
         })
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       if (args.mode === "checkpoint") {
-        if (!args.items) return JSON.stringify({ success: false, error: "items (JSON array) is required" })
+        if (!args.items) return { content: JSON.stringify({ success: false, error: "items (JSON array) is required" }) }
         let parsedItems: Array<{ wing: string; room: string; content: string }>
         let parsedDiary: { agent_name?: string; entry: string; topic?: string; wing?: string } | undefined
         try {
-          parsedItems = JSON.parse(args.items)
-          if (args.diary) parsedDiary = JSON.parse(args.diary)
+          const itemsValue: unknown = JSON.parse(args.items)
+          const diaryValue: unknown = args.diary ? JSON.parse(args.diary) : undefined
+          if (!Array.isArray(itemsValue) || !itemsValue.every((item) => isRecord(item) && typeof item.wing === "string" && typeof item.room === "string" && typeof item.content === "string")) {
+            return { content: JSON.stringify({ success: false, error: "items must be an array of { wing, room, content } strings" }) }
+          }
+          if (diaryValue !== undefined && (!isRecord(diaryValue) || typeof diaryValue.entry !== "string" || ["agent_name", "topic", "wing"].some((key) => diaryValue[key] !== undefined && typeof diaryValue[key] !== "string"))) {
+            return { content: JSON.stringify({ success: false, error: "diary must contain an entry string and optional string metadata" }) }
+          }
+          parsedItems = itemsValue.map((item) => ({ ...item, content: normalizeValue(item.content, config.privacyRedactionEnabled) ?? "" }))
+          parsedDiary = diaryValue ? { ...diaryValue, entry: normalizeValue(String(diaryValue.entry), config.privacyRedactionEnabled) ?? "" } : undefined
         } catch {
-          return JSON.stringify({ success: false, error: "items/diary must be valid JSON" })
+          return { content: JSON.stringify({ success: false, error: "items/diary must be valid JSON" }) }
         }
-        const result = await executeAdapter(ctx.$, {
+        const result = await executeToolAdapter(undefined, {
           mode: "checkpoint",
           items: parsedItems,
           diary: parsedDiary,
@@ -290,11 +333,11 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
             preview: `checkpoint: ${parsedItems.length} items`,
           })
         }
-        return JSON.stringify(result)
+        return { content: JSON.stringify(result) }
       }
 
       // Default: diary_write (fallthrough for mode === "diary_write")
-      const result = await executeAdapter(ctx.$, {
+      const result = await executeToolAdapter(undefined, {
         mode: "diary_write",
         agent_name: normalizeValue(args.agent_name, false) ?? DEFAULT_AGENT_NAME,
         entry: normalizeValue(args.content || "", config.privacyRedactionEnabled) ?? "",
@@ -308,6 +351,6 @@ export const mempalaceMemoryTool = (ctx: ToolContext) =>
           preview: normalizeValue(args.content || "", config.privacyRedactionEnabled) ?? "",
         })
       }
-      return JSON.stringify(result)
+      return { content: JSON.stringify(result) }
     },
   })

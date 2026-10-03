@@ -24,24 +24,15 @@ describe("eventHooks", () => {
     resetAllStates()
     await resetStatusState()
     adapterCalls.length = 0
-    const hooks = eventHooks({
-      client: {
-        session: {
-          messages: async () => ({
-            data: [
-              { role: "user", content: "Remember project decision." },
-              { role: "assistant", content: "Done." },
-            ],
-          }),
-        },
-      },
-      project: { name: "Demo" },
-      directory: "",
-      worktree: "",
-      $: async () => {},
-    })
-
-    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-1" } } })
+    const ctx = {
+      session: { context: async () => [
+        { type: "user", id: "u1", time: { created: 1 }, text: "Remember project decision." },
+        { type: "assistant", id: "a1", time: { created: 2 }, agent: "build", model: { providerID: "test", modelID: "test" }, content: [{ type: "text", text: "Done." }] },
+      ] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    const event = { type: "session.idle", data: { sessionID: "event-1" } }
+    await eventHooks(ctx, event)
     expect(adapterCalls[0].mode).toBe("mine_messages")
     expect(getSessionState("event-1").status).toBe(AutosaveStatus.Saved)
     const status = await readStatusState()
@@ -53,14 +44,11 @@ describe("eventHooks", () => {
     resetConfig()
     resetAllStates()
     await resetStatusState()
-    const hooks = eventHooks({
-      client: { session: { messages: async () => ({ data: [{ role: "user", content: "How do we build?" }] }) } },
-      project: {},
-      directory: "",
-      worktree: "",
-      $: async () => {},
-    })
-    await hooks.event?.({ event: { type: "message.updated", properties: { sessionID: "event-2" } } })
+    const ctx = {
+      session: { context: async () => [{ type: "user", id: "u2", time: { created: 1 }, text: "How do we build?" }] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    await eventHooks(ctx, { type: "message.updated", data: { sessionID: "event-2" } })
     expect(getSessionState("event-2").retrievalPending).toBe(true)
   })
 
@@ -69,24 +57,14 @@ describe("eventHooks", () => {
     resetAllStates()
     await resetStatusState()
     adapterCalls.length = 0
-    const hooks = eventHooks({
-      client: {
-        session: {
-          messages: async () => ({
-            data: [
-              { role: "user", content: "Call me Борис\udc81" },
-              { role: "assistant", content: "Got it." },
-            ],
-          }),
-        },
-      },
-      project: { name: "Demo" },
-      directory: "",
-      worktree: "",
-      $: async () => {},
-    })
-
-    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-3" } } })
+    const ctx = {
+      session: { context: async () => [
+        { type: "user", id: "u3", time: { created: 1 }, text: "Call me Борис\udc81" },
+        { type: "assistant", id: "a3", time: { created: 2 }, agent: "build", model: { providerID: "test", modelID: "test" }, content: [{ type: "text", text: "Got it." }] },
+      ] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    await eventHooks(ctx, { type: "session.idle", data: { sessionID: "event-3" } })
 
     expect(adapterCalls[0].mode).toBe("mine_messages")
     expect(adapterCalls[0].transcript).toContain("Борис")
@@ -98,25 +76,15 @@ describe("eventHooks", () => {
     resetAllStates()
     await resetStatusState()
     adapterCalls.length = 0
-    const hooks = eventHooks({
-      client: {
-        session: {
-          messages: async () => ({
-            data: [
-              { role: "user", content: "re." },
-              { role: "assistant", content: "ls>" },
-              { role: "user", content: "fy. |" },
-            ],
-          }),
-        },
-      },
-      project: { name: "Demo" },
-      directory: "",
-      worktree: "",
-      $: async () => {},
-    })
-
-    await hooks.event?.({ event: { type: "session.idle", properties: { sessionID: "event-4" } } })
+    const ctx = {
+      session: { context: async () => [
+        { type: "user", id: "u4", time: { created: 1 }, text: "re." },
+        { type: "assistant", id: "a4", time: { created: 2 }, agent: "build", model: { providerID: "test", modelID: "test" }, content: [{ type: "text", text: "ls>" }] },
+        { type: "user", id: "u5", time: { created: 3 }, text: "fy. |" },
+      ] },
+      location: { project: { id: "demo", directory: "/tmp/Demo", canonical: "/tmp/Demo" } },
+    }
+    await eventHooks(ctx, { type: "session.idle", data: { sessionID: "event-4" } })
 
     expect(adapterCalls).toHaveLength(0)
     expect(getSessionState("event-4").status).toBe(AutosaveStatus.Noop)

@@ -25,6 +25,7 @@ mock.module("@opencode-ai/plugin", () => ({
 }))
 
 const adapterCalls: AdapterRequest[] = []
+let adapterFailure = false
 
 class FakeStream extends EventEmitter {}
 
@@ -37,6 +38,11 @@ class FakeChild extends EventEmitter {
     },
     end: () => {
       queueMicrotask(() => {
+        if (adapterFailure) {
+          this.stderr.emit("data", Buffer.from("adapter unavailable"))
+          this.emit("close", 1)
+          return
+        }
         const payload = adapterCalls.at(-1)
         if (payload?.mode === "search") {
           this.stdout.emit("data", Buffer.from('{"success":true,"results":[{"content":"Use Bun for builds and tests."}]}'))
@@ -68,6 +74,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  adapterFailure = false
   resetAdapterTestHooks()
 })
 
@@ -77,7 +84,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -86,9 +93,20 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(result).toContain("success")
+    const parsed = JSON.parse(result.content)
+    expect(parsed).toMatchObject({ success: true, wing: "wing_project_demo", room: "decisions", scope: "project", already_exists: false })
     expect(adapterCalls[0].mode).toBe("save")
     expect(adapterCalls[0].content).toContain("[REDACTED_PRIVATE]")
+  })
+
+  it("returns adapter failures as structured errors", async () => {
+    adapterFailure = true
+    const toolDef = mempalaceMemoryTool({ location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } }, $: async () => {} })
+    const result = await toolDef.execute(
+      { mode: "save", scope: "project", room: "decisions", content: "will fail" },
+      { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
+    )
+    expect(JSON.parse(result.content)).toEqual({ success: false, error: expect.stringContaining("adapter unavailable") })
   })
 
   it("routes search to the correct scoped wing", async () => {
@@ -96,7 +114,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -105,7 +123,7 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(JSON.parse(result as string)._retrieval_summary).toBeDefined()
+    expect(JSON.parse(result.content)._retrieval_summary).toBeDefined()
     expect(adapterCalls[0].mode).toBe("search")
     expect(adapterCalls[0].wing).toBe("wing_user_profile")
     const status = await readStatusState()
@@ -118,7 +136,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -127,7 +145,7 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    const parsed = JSON.parse(result as string)
+    const parsed = JSON.parse(result.content)
     expect(parsed._retrieval_summary).toContain("Found 1 relevant memory")
     expect(parsed._retrieval_summary).toContain("Use Bun for builds and tests.")
   })
@@ -137,7 +155,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -155,7 +173,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -164,7 +182,7 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(JSON.parse(result as string).success).toBe(true)
+    expect(JSON.parse(result.content).success).toBe(true)
     expect(adapterCalls[0].mode).toBe("delete")
     expect((adapterCalls[0] as { drawer_id: string }).drawer_id).toBe("drawer_123")
   })
@@ -174,7 +192,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -183,8 +201,8 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(JSON.parse(result as string).success).toBe(false)
-    expect(JSON.parse(result as string).error).toContain("drawer_id")
+    expect(JSON.parse(result.content).success).toBe(false)
+    expect(JSON.parse(result.content).error).toContain("drawer_id")
     expect(adapterCalls.length).toBe(0)
   })
 
@@ -193,7 +211,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -213,7 +231,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -233,7 +251,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -242,8 +260,8 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(JSON.parse(result as string).success).toBe(false)
-    expect(JSON.parse(result as string).error).toContain("entity")
+    expect(JSON.parse(result.content).success).toBe(false)
+    expect(JSON.parse(result.content).error).toContain("entity")
     expect(adapterCalls.length).toBe(0)
   })
 
@@ -252,7 +270,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -272,7 +290,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -300,7 +318,7 @@ describe("mempalaceMemoryTool", () => {
     await resetStatusState()
     adapterCalls.length = 0
     const toolDef = mempalaceMemoryTool({
-      project: { name: "Demo" },
+      location: { project: { canonical: "/tmp/Demo", directory: "/tmp/Demo" } },
       $: async () => {},
     })
 
@@ -309,8 +327,8 @@ describe("mempalaceMemoryTool", () => {
       { sessionID: "s", messageID: "m", agent: "a", abort: new AbortController().signal },
     )
 
-    expect(JSON.parse(result as string).success).toBe(false)
-    expect(JSON.parse(result as string).error).toContain("valid JSON")
+    expect(JSON.parse(result.content).success).toBe(false)
+    expect(JSON.parse(result.content).error).toContain("valid JSON")
     expect(adapterCalls.length).toBe(0)
   })
 })

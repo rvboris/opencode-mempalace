@@ -1,5 +1,4 @@
-import type { PluginInput } from "@opencode-ai/plugin"
-import type { Event, Message, Part } from "@opencode-ai/sdk"
+import type { SessionMessageInfo } from "@opencode/client"
 import {
   DEFAULT_ROOM,
   DEFAULT_TOPIC,
@@ -83,49 +82,29 @@ export type RetrievalJudgeCounters = {
 
 export const SESSION_EVENT_TYPES = [
   "session.idle",
-  "session.compacted",
+  "session.compaction.ended",
   "session.deleted",
-  "session.error",
-  "session.updated",
-  "message.updated",
+  "session.execution.failed",
+  "session.step.ended",
 ] as const
 export type SessionEventType = (typeof SESSION_EVENT_TYPES)[number]
 
 export type AppLogLevel = "info" | "warn" | "error"
 
-export type MessagePartLike = Part | {
-  text?: string
-  content?: string
+export type MessagePartLike = { type?: string; text?: string }
+export type MessageInfoLike = { role?: string; content?: string }
+export type MessageLike = { role?: string; info?: MessageInfoLike; content?: string; parts?: readonly MessagePartLike[] }
+export type SessionMessagesResponse = readonly SessionMessageInfo[]
+export type SessionEvent = import("@opencode/client/promise").OpenCodeEvent
+export type PluginContext = {
+  session: { context(input: { sessionID: string }): Promise<SessionMessagesResponse> }
+  location: { project: { id: string; directory: string; canonical: string } }
 }
-
-export type MessageInfoLike = Message | {
-  role?: string
-  content?: string
+export type EventHookContext = PluginContext
+export type SystemHookContext = PluginContext
+export type ToolContext = {
+  location: { project: { id: string; directory: string; canonical: string } }
 }
-
-export type MessageLike = {
-  role?: string
-  content?: string
-  parts?: readonly MessagePartLike[]
-  info?: MessageInfoLike
-}
-
-export type SessionMessagesResponse =
-  | Awaited<ReturnType<PluginInput["client"]["session"]["messages"]>>
-  | { data?: readonly MessageLike[] }
-  | readonly MessageLike[]
-  | null
-  | undefined
-
-export type SessionEvent = Event
-
-export type AppLoggerClient = PluginInput["client"]
-
-export type EventHookContext = Pick<PluginInput, "client" | "project" | "directory" | "worktree" | "$">
-
-export type SystemHookContext = Pick<PluginInput, "client" | "project">
-
-export type ToolContext = Pick<PluginInput, "project" | "$">
 
 export type SaveAdapterRequest = {
   mode: "save"
