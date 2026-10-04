@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and versions are managed by `release-please`.
 
+## [2.0.1](https://github.com/rvboris/opencode-mempalace/compare/opencode-mempalace-v2.0.0...opencode-mempalace-v2.0.1) (2026-10-04)
+
+
+### Miscellaneous Chores
+
+* prepare 2.0.1 release ([6c1d137](https://github.com/rvboris/opencode-mempalace/commit/6c1d137b769ae4c86f94e13eec59cb546af8d6ef))
+
 ## [2.0.0](https://github.com/rvboris/opencode-mempalace/compare/opencode-mempalace-v1.0.0...opencode-mempalace-v2.0.0) (2026-10-03)
 
 
