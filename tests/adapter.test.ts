@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { EventEmitter } from "node:events"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
@@ -36,14 +36,15 @@ const { executeAdapter, resetAdapterTestHooks, resolvePython, setAdapterDelayFor
   "../plugin/lib/adapter"
 )
 
-setAdapterSpawnForTests(() => new FakeChild() as never)
-
 describe("adapter bridge", () => {
+  beforeEach(() => {
+    setAdapterSpawnForTests(() => new FakeChild() as never)
+  })
+
   afterEach(() => {
     spawnBehaviors.length = 0
     spawnBehavior = emptyStdoutBehavior
     resetAdapterTestHooks()
-    setAdapterSpawnForTests(() => new FakeChild() as never)
   })
 
   it("restores stdout after mempalace import-time redirection", () => {

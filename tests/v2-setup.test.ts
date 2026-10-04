@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 import fs from "node:fs/promises"
@@ -7,16 +7,23 @@ import { resetStatusState, readStatusState } from "../plugin/lib/status"
 import { resetConfig } from "../plugin/lib/config"
 import { OpenCode } from "@opencode/client/promise"
 import type { Plugin } from "@opencode/plugin/promise/plugin"
+import { FakeAdapterChild } from "./helpers/fake-adapter"
 
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mempalace-v2-setup-"))
 process.env.MEMPALACE_STATUS_FILE = path.join(dir, "status.json")
 
 const adapterCalls: unknown[] = []
-mock.module("../plugin/lib/adapter", () => ({ executeAdapter: async (_shell: unknown, request: unknown) => { adapterCalls.push(request); return { success: true } } }))
+const { setAdapterSpawnForTests, resetAdapterTestHooks } = await import("../plugin/lib/adapter")
 const { default: plugin } = await import("../plugin/index")
 const installedPlugin: Plugin = plugin
 
+beforeEach(() => {
+  adapterCalls.length = 0
+  setAdapterSpawnForTests(() => new FakeAdapterChild(adapterCalls) as never)
+})
+
 afterEach(async () => {
+  resetAdapterTestHooks()
   resetAllStates()
   resetConfig()
   await resetStatusState()

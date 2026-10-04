@@ -1,9 +1,13 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, afterAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 import fs from "node:fs/promises"
 import type { AdapterRequest } from "../plugin/lib/types"
+import { FakeAdapterChild } from "./helpers/fake-adapter"
 
+const originalHome = process.env.HOME
+const originalStatusFile = process.env.MEMPALACE_STATUS_FILE
+const originalAutosaveLog = process.env.MEMPALACE_AUTOSAVE_LOG_FILE
 const home = await fs.mkdtemp(path.join(os.tmpdir(), "mempalace-lifecycle-home-"))
 process.env.HOME = home
 process.env.MEMPALACE_STATUS_FILE = path.join(home, "status.json")
@@ -11,14 +15,9 @@ process.env.MEMPALACE_AUTOSAVE_LOG_FILE = path.join(home, "autosave.log")
 
 const adapterCalls: AdapterRequest[] = []
 let rejectAdapter = false
-mock.module("../plugin/lib/adapter", () => ({
-  executeAdapter: async (_shell: unknown, payload: AdapterRequest) => {
-    adapterCalls.push(payload)
-    if (rejectAdapter) throw new Error("adapter offline")
-    return { success: true }
-  },
-}))
 mock.module("../plugin/lib/log", () => ({ writeLog: async () => {} }))
+
+const { resetAdapterTestHooks, setAdapterSpawnForTests } = await import("../plugin/lib/adapter")
 
 const { eventHooks } = await import("../plugin/hooks/event")
 const { getSessionMessages } = await import("../plugin/lib/opencode")
@@ -49,6 +48,22 @@ const setup = async () => {
   adapterCalls.length = 0
   rejectAdapter = false
 }
+
+beforeEach(() => {
+  setAdapterSpawnForTests(() => {
+    const child = new FakeAdapterChild(adapterCalls)
+    child.fail = rejectAdapter
+    return child as never
+  })
+})
+
+afterEach(() => resetAdapterTestHooks())
+
+afterAll(() => {
+  process.env.HOME = originalHome
+  process.env.MEMPALACE_STATUS_FILE = originalStatusFile
+  process.env.MEMPALACE_AUTOSAVE_LOG_FILE = originalAutosaveLog
+})
 
 describe("V2 session lifecycle", () => {
   it("injects retrieval and keyword instructions once per user digest from context alone", async () => {

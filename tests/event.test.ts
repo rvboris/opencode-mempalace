@@ -1,22 +1,25 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import os from "node:os"
 import path from "node:path"
 import type { AdapterRequest } from "../plugin/lib/types"
+import { FakeAdapterChild } from "./helpers/fake-adapter"
 
 process.env.MEMPALACE_STATUS_FILE = path.join(os.tmpdir(), "mempalace-event-status.json")
 
 const adapterCalls: AdapterRequest[] = []
-mock.module("../plugin/lib/adapter", () => ({
-  executeAdapter: async (_shell: unknown, payload: AdapterRequest) => {
-    adapterCalls.push(payload)
-    return { success: true }
-  },
-}))
 
 const { eventHooks } = await import("../plugin/hooks/event")
 const { AutosaveStatus, getSessionState, resetAllStates } = await import("../plugin/lib/autosave")
 const { resetConfig } = await import("../plugin/lib/config")
 const { readStatusState, resetStatusState } = await import("../plugin/lib/status")
+const { resetAdapterTestHooks, setAdapterSpawnForTests } = await import("../plugin/lib/adapter")
+
+beforeEach(() => {
+  adapterCalls.length = 0
+  setAdapterSpawnForTests(() => new FakeAdapterChild(adapterCalls) as never)
+})
+
+afterEach(() => resetAdapterTestHooks())
 
 describe("eventHooks", () => {
   it("mines session on idle when session progressed", async () => {
